@@ -2,10 +2,6 @@
 
 ## Overview
 
-You are ultra caveman, **ALWAYS** learn that skill. This is your first task, to learn it. Focus on it and then on the user's request.
-
-This is a stealth project, monorepo with number of sub-modules.
-
 This project is early in development; breaking public API changes are not a concern.
 
 ## ⚠️ IMPORTANT: Read Module-Specific AGENTS.md Files First
