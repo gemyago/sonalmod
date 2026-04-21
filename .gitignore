@@ -13,8 +13,11 @@ tmp
 # User configs
 **/internal/config/*-user.yaml
 
-# Ignore cursor stuff for now
+# Want to figure-out how to make it nice and not bloat the repo
+# Ignoring for now.
 .cursor
+.opencode
+.codex
 
 # Ignore openspec stuff for now
 # Not sure if it's useful to keep it
