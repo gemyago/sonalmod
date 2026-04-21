@@ -11,6 +11,10 @@ Please have the following tools installed:
 
 [OpenSpec](https://github.com/fission-ai/openspec) - good for structured flow. Use `openspec init`. Not committing to the repo for now.
 
+## Product Docs
+
+Canonical domain vocabulary for planning, design, and copy: [docs/domain-terminology.md](./docs/domain-terminology.md).
+
 ## Typical Monorepo Tasks
 
 If not using direnv and nvm, make sure to have go and node of a correct version as per [.nvmrc](.nvmrc) and [go.work](go.work) files.
