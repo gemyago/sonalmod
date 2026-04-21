@@ -81,6 +81,10 @@ Releasing: run **Release Prepare**, review the draft on GitHub, then **publish**
 ## Coding Guide
 - Always read [golang-coding-guide.md](./docs/golang-coding-guide.md) if planning to write golang code.
 
+## Product Docs
+
+Canonical domain vocabulary for planning, design, and copy: [docs/domain-terminology.md](./docs/domain-terminology.md).
+
 ## Project Rules and Conventions
 
 AI must always follow the rules and conventions defined in this section. This section defines a project specific rules and conventions. Module level rules and conventions must also be followed.
