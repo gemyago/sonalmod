@@ -1,0 +1,117 @@
+# Default configuration for the application, applies to all environments.
+
+defaultLogLevel: INFO
+
+# Base directory for agent storage and workspace tools (relative to process working directory).
+dataDir: data
+
+pprofListener:
+  # Make sure your app is fully internal if enabling it in production
+  enabled: false
+  addr: "localhost:6060"
+
+# This should be aligned with actual runtime environment (e.g k8s or similar)
+gracefulShutdownTimeout: 10s
+
+httpServer:
+  host: "[::]"
+  port: 4501
+  idleTimeout: 60s
+  readHeaderTimeout: 2s
+  readTimeout: 2s
+  # Align with LLM HTTP client timeout (internal/runtime.go llmClientTimeout); SSE agent runs need the full window.
+  writeTimeout: 300s
+  accessLogsLevel: ""
+  # Path to pre-built UI static assets directory. Empty means API-only mode.
+  uiLocation: ""
+
+openTelemetry:
+  # Enable or disable OpenTelemetry integration in one place
+  enabled: false
+
+  # Enable or disable collection of golang runtime metrics (CPU, memory, GC, etc.)
+  # Uses https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/runtime
+  runtimeMetrics: true
+
+  # Traces configuration
+  traces:
+    enabled: false
+    endpoint: ""
+    urlPath: ""
+    protocol: http/protobuf
+    samplingRate: 1.0
+    auth:
+      token: ""
+      tokenType: ""
+  
+  # Metrics configuration
+  metrics:
+    enabled: false
+    endpoint: ""
+    urlPath: ""
+    protocol: http/protobuf
+    exportInterval: 30s
+    auth:
+      token: ""
+      tokenType: ""
+
+  # Logs configuration
+  logs:
+    enabled: false
+
+    # If true, logs will be sent to both default handler (e.g stdout) and OTEL handler
+    # If false, logs will be sent only to OTEL handler
+    defaultHandlerFanout: false
+    
+    endpoint: ""
+    urlPath: ""
+    protocol: http/protobuf
+    auth:
+      token: ""
+      tokenType: ""
+
+auth:
+  # empty → auto-generate and persist in dataDir; override via APP_AUTH_JWTSIGNINGKEY
+  jwtSigningKey: ""
+  accessTokenTTL: 30m
+  refreshTokenTTL: 720h   # 30 days
+
+workspacefs:
+  exec:
+    # Exec tools are disabled by default; set to true to enable shell execution tools.
+    enabled: false
+    # Maximum bytes captured per command output stream (0 uses safe built-in default).
+    maxOutputBytes: 0
+    # Per-command timeout for foreground execution (0 uses safe built-in default).
+    defaultTimeout: 0s
+    # Maximum number of concurrent background jobs (0 uses safe built-in default).
+    maxConcurrentJobs: 0
+
+agentRuntime:
+  # Where the embedded agent runtime persists state (sessions, providers config, etc.).
+  # storage.type: "file" (default) or "database"
+  storage:
+    type: file
+  database:
+    # Provided via env APP_AGENTRUNTIME_DATABASE_DSN
+    dsn: ""
+    # Table name prefix for agent runtime database tables (sessions, provider config, etc.).
+    # If underlying DB supports schemas, the prefix will serve as the schema name.
+    tablePrefix: ""
+    # When true (default), GORM AutoMigrate runs on startup for database-backed agent runtime storage.
+    # Set to false when migrations are managed externally.
+    autoMigrate: true
+
+skills:
+  # Set to true to enable skill discovery and tool registration.
+  enabled: false
+  # Directories to scan for skill subdirectories (each must contain a SKILL.md).
+  # Relative paths are resolved from the process working directory.
+  # Defaults to the recommended locations from the agentskills ecosystem guidance.
+  paths:
+    - ~/.config/agents/skills
+    - .agents/skills
+  # Maximum size in bytes of a single SKILL.md file (default 65536 = 64 KiB).
+  maxSkillBytes: 65536
+  # Maximum number of skills to load into the catalog.
+  maxCatalogEntries: 500

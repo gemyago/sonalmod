@@ -1,0 +1,323 @@
+/**
+ * Design system — layer 1 (foundation). See apps/sonal-ui/DESIGN.md §10.
+ * Tokens, theme aliases, global element defaults, shell utilities (`button.*`, `.counter`).
+ * Layer 2: `src/styles/design-system.css` (`ds-*`). Import order: this file first (`main.ts`).
+ *
+ * Spec: DESIGN.md (terminal-native monospace). Berkeley Mono first in stack; theme via
+ * `html[data-theme="light"|"dark"]` (`lib/theme`).
+ */
+:root {
+  /* Primary palette */
+  --color-primary-dark: #201d1d;
+  --color-primary-light: #fdfcfc;
+  --color-mid-gray: #9a9898;
+
+  /* Secondary surfaces */
+  --color-dark-surface: #302c2c;
+  --color-border-gray: #646262;
+  --color-light-surface: #f1eeee;
+
+  /* Accent */
+  --color-accent-blue: #007aff;
+  --color-accent-blue-hover: #0056b3;
+  --color-accent-blue-active: #004085;
+
+  /* Semantic */
+  --color-danger: #ff3b30;
+  --color-danger-hover: #d70015;
+  --color-success: #30d158;
+  --color-warning: #ff9f0a;
+
+  /* Text */
+  --color-text-muted: #6e6e73;
+  --color-text-secondary-light-bg: #424245;
+
+  /* Borders */
+  --color-border-warm: rgba(15, 0, 0, 0.12);
+  /* Same visual weight as `--color-border-warm` on light bg, for `#201d1d` / raised dark surfaces */
+  --color-border-warm-on-dark: rgba(253, 252, 252, 0.14);
+  --color-border-tab: #9a9898;
+  --color-border-outline: #646262;
+
+  /* Inputs (DESIGN.md email field) */
+  --color-input-bg: #f8f7f7;
+  --color-input-text: #201d1d;
+
+  --font-mono:
+    'Berkeley Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  --sans: var(--font-mono);
+  --heading: var(--font-mono);
+  --mono: var(--font-mono);
+
+  --radius-default: 4px;
+  --radius-input: 6px;
+
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-32: 32px;
+  --space-48: 48px;
+  --space-64: 64px;
+  --space-96: 96px;
+
+  --font-size-body: 1rem;
+  --font-size-caption: 0.875rem;
+  --font-size-h1: 2.375rem;
+  --font-size-h2: 1rem;
+  --main-padding-inline: var(--space-20);
+  --main-padding-block: var(--space-48);
+  --content-max-width: 52rem;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dark appearance (default before JS; matches bootstrap) */
+[data-theme='dark'],
+html:not([data-theme]) {
+  color-scheme: dark;
+
+  --text: var(--color-mid-gray);
+  --text-h: var(--color-primary-light);
+  --text-muted: var(--color-text-muted);
+  --bg: var(--color-primary-dark);
+  --border: var(--color-border-warm-on-dark);
+  --link: var(--color-primary-light);
+  --surface-raised: var(--color-dark-surface);
+  --text-on-raised: var(--color-primary-light);
+  --danger-bg: rgba(255, 59, 48, 0.12);
+  --danger-border: rgba(255, 59, 48, 0.45);
+  --secondary-hover-bg: rgba(253, 252, 252, 0.06);
+
+  --code-bg: var(--color-dark-surface);
+  --accent: var(--color-accent-blue);
+  --accent-bg: rgba(0, 122, 255, 0.12);
+  --accent-border: rgba(0, 122, 255, 0.45);
+
+  --btn-primary-bg: var(--color-primary-dark);
+  --btn-primary-fg: var(--color-primary-light);
+  --btn-primary-border: var(--color-border-outline);
+
+  /* Fields sit above `--bg` with a raised surface + border (see DESIGN.md inputs) */
+  --color-input-bg: var(--color-dark-surface);
+  --color-input-text: var(--color-primary-light);
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --text: var(--color-text-secondary-light-bg);
+  --text-h: var(--color-primary-dark);
+  --text-muted: var(--color-text-muted);
+  --bg: #fdfcfc;
+  --border: var(--color-border-warm);
+  --link: var(--color-primary-dark);
+  --surface-raised: var(--color-light-surface);
+  --text-on-raised: var(--color-primary-dark);
+  --danger-bg: rgba(255, 59, 48, 0.1);
+  --danger-border: rgba(255, 59, 48, 0.35);
+  --secondary-hover-bg: rgba(0, 0, 0, 0.06);
+
+  --code-bg: #eceaea;
+  --accent: var(--color-accent-blue);
+  --accent-bg: rgba(0, 122, 255, 0.1);
+  --accent-border: rgba(0, 122, 255, 0.4);
+
+  --btn-primary-bg: var(--color-primary-dark);
+  --btn-primary-fg: var(--color-primary-light);
+  --btn-primary-border: var(--color-border-outline);
+
+  --color-input-bg: #f8f7f7;
+  --color-input-text: var(--color-primary-dark);
+}
+
+@media (max-width: 1023px) {
+  :root {
+    --font-size-h1: 1.75rem;
+    --main-padding-block: var(--space-64);
+  }
+}
+
+@media (max-width: 639px) {
+  :root {
+    --font-size-h1: 1.5rem;
+    --main-padding-inline: var(--space-16);
+    --main-padding-block: var(--space-48);
+  }
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100%;
+  font: 400 var(--font-size-body) / 1.5 var(--font-mono);
+  letter-spacing: normal;
+  color: var(--text);
+  background: var(--bg);
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+h1,
+h2 {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  margin: 0 0 var(--space-16);
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  margin: 0 0 var(--space-8);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--link);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover,
+a:focus-visible {
+  color: var(--color-accent-blue);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-default);
+  color: var(--text-on-raised);
+  background: var(--code-bg);
+}
+
+/* Primary CTA: dark fill per DESIGN.md §4 Buttons.
+ * Hover/active match `.ds-btn--primary` / `.ds-nav__cta` (layer 2): shift to `--color-dark-surface`,
+ * not opacity — one pattern for shell + ds kit. */
+button.primary {
+  font-family: inherit;
+  font-weight: 500;
+  line-height: 2;
+  font-size: var(--font-size-body);
+  padding: var(--space-4) var(--space-20);
+  border-radius: var(--radius-default);
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  border: 1px solid var(--btn-primary-border);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--color-dark-surface);
+  border-color: var(--color-border-outline);
+}
+
+button.primary:focus-visible:not(:disabled) {
+  background: var(--color-dark-surface);
+  border-color: var(--color-border-outline);
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+}
+
+button.primary:active:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+button.primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  font-family: inherit;
+  font-weight: 500;
+  font-size: var(--font-size-body);
+  padding: var(--space-4) var(--space-20);
+  border-radius: var(--radius-default);
+  background: transparent;
+  color: var(--text-h);
+  border: 1px solid var(--color-border-outline);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+button.secondary:hover:not(:disabled) {
+  background: var(--secondary-hover-bg);
+}
+
+button.secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.danger {
+  font-family: inherit;
+  font-weight: 500;
+  font-size: var(--font-size-body);
+  line-height: 2;
+  padding: var(--space-4) var(--space-20);
+  border-radius: var(--radius-default);
+  background: var(--color-danger);
+  color: var(--color-primary-light);
+  border: 1px solid var(--color-danger);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+button.danger:hover:not(:disabled) {
+  background: var(--color-danger-hover);
+  border-color: var(--color-danger-hover);
+}
+
+button.danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Demo / test Counter */
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: var(--radius-default);
+  font-size: var(--font-size-body);
+  padding: var(--space-4) var(--space-8);
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  transition: border-color 0.15s ease;
+}
+
+.counter:hover {
+  border-color: var(--accent);
+}
+
+.counter:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

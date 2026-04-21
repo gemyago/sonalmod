@@ -1,0 +1,17 @@
+{
+  "name": "sonalmod-workspace",
+  "version": "0.0.0",
+  "description": "This is a stealth project, does nothing for now",
+  "license": "MIT",
+  "author": "https://github.com/gemyago",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gemyago/sonalmod.git"
+  },
+  "devDependencies": {
+    "@fission-ai/openspec": "^1.2.0",
+    "@nx-go/nx-go": "4.0.0-beta.0",
+    "nx": "22.6.4"
+  },
+  "nx": {}
+}

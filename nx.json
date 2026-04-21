@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "defaultBase": "main",
+  "analytics": false,
+  "namedInputs": {
+    "golangci": ["{workspaceRoot}/.golangci.yml"]
+  },
+  "plugins": [
+    "@nx-go/nx-go"
+  ],
+  "targetDefaults": {
+    "lint": {
+      "cache": true,
+      "dependsOn": ["install-deps"]
+    },
+    "test": {
+      "cache": true,
+      "dependsOn": ["install-deps"]
+    },
+    "build": {
+      "cache": true,
+      "dependsOn": ["install-deps"]
+    },
+    "dev": {
+      "cache": false
+    },
+    "install-deps": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "options": {
+        "command": "go mod download",
+        "cwd": "{projectRoot}"
+      },
+      "inputs": [
+        "{projectRoot}/go.sum"
+      ]
+    }
+  },
+  "tui": {
+    "autoExit": true
+  },
+  "nxCloudId": "69d5f5329469e713391ed5d5"
+}

@@ -1,0 +1,25 @@
+{
+  "name": "npm-build",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["sonal-ui:test"],
+      "inputs": [
+        "{projectRoot}/scripts/**/*.sh",
+        "{projectRoot}/app/bin/sonalmod.js",
+        "{projectRoot}/app/bin/sonalmod.test.mjs",
+        "{projectRoot}/ui/package.json",
+        "{projectRoot}/ui/package.test.mjs",
+        "{projectRoot}/Makefile",
+        "{projectRoot}/build.cfg",
+        "{projectRoot}/scripts/test-makefile.sh"
+      ],
+      "options": {
+        "command": "make test",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

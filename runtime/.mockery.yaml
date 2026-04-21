@@ -1,0 +1,37 @@
+dir: '{{.InterfaceDirRelative}}'
+template: testify
+template-data:
+  mock-build-tags: '!release'
+  unroll-variadic: true
+
+# Prefer default configuration. Override only if needed, for example 
+# to mock external packages.
+
+packages:
+  google.golang.org/adk/session:
+    interfaces:
+      Service:
+        config:
+          dir: internal/
+          pkgname: internal
+          filename: mock_session_service_test.go
+  github.com/gemyago/sonalmod/runtime/agent:
+    interfaces:
+      AgentRunner:
+        config:
+          # Allow this mock to be used by others
+          filename: mocks_shared.go
+      DefinedTool:
+  github.com/gemyago/sonalmod/runtime/internal:
+    interfaces:
+      LLMRunner:
+  github.com/gemyago/sonalmod/runtime/internal/agentapi:
+    interfaces:
+      ModelsLister:
+  github.com/gemyago/sonalmod/runtime/internal/llmproviders:
+    interfaces:
+      ProvidersConfigService:
+        config:
+          # Allow this mock to be used by others
+          filename: mocks_shared.go
+

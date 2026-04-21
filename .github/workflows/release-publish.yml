@@ -1,0 +1,120 @@
+# Build from the released tag, publish to npm, attach tarballs to the existing GitHub Release.
+# Triggered when a release is published (including draft → published), or manually for recovery/testing.
+name: Release Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref (prefer tag v1.2.3; or commit with exactly one v* tag)'
+        required: true
+
+permissions:
+  id-token: write
+  contents: write
+
+concurrency:
+  group: release-publish-${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-publish:
+    name: Publish
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: tree:0
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.event.inputs.ref }}
+
+      - name: Resolve semver tag
+        id: resolve-tag
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "TAG=${TAG}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          REF="${{ github.event.inputs.ref }}"
+          git fetch --tags --force 2>/dev/null || true
+          if [[ "$REF" == v[0-9]* ]]; then
+            echo "TAG=${REF}" >> "$GITHUB_OUTPUT"
+            echo "TAG=${REF}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          mapfile -t CANDIDATES < <(git tag --points-at HEAD 2>/dev/null | grep -E '^v[0-9]+\.[0-9]+\.[0-9]' | sort -V || true)
+          if [ "${#CANDIDATES[@]}" -eq 1 ]; then
+            TAG="${CANDIDATES[0]}"
+            echo "TAG=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "TAG=${TAG}" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "Could not resolve a single v* semver tag from ref '${REF}'. Use a tag (e.g. v1.2.3) or a commit with exactly one v* tag." >&2
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/sonal-ui/package-lock.json
+          registry-url: 'https://registry.npmjs.org'
+
+      # Root deps (Nx, etc.). `make release` runs the `ui` target, which runs `npm ci` in apps/sonal-ui.
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+          cache-dependency-path: |
+            go.work.sum
+            runtime/go.sum
+            apps/**/go.sum
+            tools/**/go.sum
+
+      - name: Parse semver tag and derive dist-tag
+        id: semver
+        run: |
+          PARSED=$(build/npm/scripts/parse-semver-tag.sh --tag "$TAG")
+          echo "$PARSED"
+          while IFS='=' read -r key value; do
+            echo "${key}=${value}" >> "$GITHUB_OUTPUT"
+            echo "${key}=${value}" >> "$GITHUB_ENV"
+          done <<< "$PARSED"
+
+      - name: Build release tarballs
+        run: make -C build/npm release VERSION=${{ steps.semver.outputs.VERSION }}
+
+      - name: List tarballs
+        run: ls -lh build/npm/dist/tarballs/
+
+      - name: Print resolved publish metadata
+        run: |
+          echo "VERSION      : ${{ steps.semver.outputs.VERSION }}"
+          echo "NPM_TAG      : ${{ steps.semver.outputs.NPM_TAG }}"
+          echo "IS_PRERELEASE: ${{ steps.semver.outputs.IS_PRERELEASE }}"
+          echo "PRERELEASE_ID: ${{ steps.semver.outputs.PRERELEASE_ID }}"
+
+      # npm publish uses Trusted Publishing (OIDC). No NPM_TOKEN — configure the repo + workflow on npmjs.com (see RELEASE-FLOW.md).
+      - name: Publish npm packages
+        run: |
+          make -C build/npm publish \
+            VERSION="${{ steps.semver.outputs.VERSION }}" \
+            NPM_TAG="${{ steps.semver.outputs.NPM_TAG }}"
+
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" build/npm/dist/tarballs/*.tgz --clobber

@@ -1,0 +1,166 @@
+openapi: 3.0.3
+info:
+  title: Sonalmod API
+  description: |
+    HTTP API for Sonalmod application.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      operationId: healthCheck
+      tags:
+        - health
+      responses:
+        '200':
+            description: Request succeeded
+            content:
+              application/json:
+                schema:
+                  $ref: "#/components/schemas/HealthResponsePayload"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/auth/login:
+    post:
+      summary: Log in with username and password
+      operationId: authLogin
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthLoginRequest"
+      responses:
+        '200':
+          description: Tokens and user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh access token using refresh token
+      operationId: authRefresh
+      tags:
+        - auth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRefreshRequest"
+      responses:
+        '200':
+          description: New tokens and user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionResponse"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/auth/me:
+    get:
+      summary: Current authenticated user
+      operationId: authMe
+      tags:
+        - auth
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserInfo"
+        default:
+          description: unexpected error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+components:
+  schemas:
+    HealthResponsePayload:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - OK
+    AuthLoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    AuthRefreshRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+    UserInfo:
+      type: object
+      required:
+        - id
+        - username
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+    AuthSessionResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - user
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserInfo"
+    Error:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          format: string
+        message:
+          type: string
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

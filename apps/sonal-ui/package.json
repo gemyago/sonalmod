@@ -1,0 +1,46 @@
+{
+  "name": "sonal-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:run": "vitest run --coverage",
+    "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "lint": "eslint . && npm run check"
+  },
+  "devDependencies": {
+    "@emnapi/core": "^1.9.1",
+    "@emnapi/runtime": "^1.9.1",
+    "@eslint/js": "^10.0.1",
+    "@faker-js/faker": "^10.4.0",
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/svelte": "^5.3.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@tsconfig/svelte": "^5.0.8",
+    "@types/node": "^24.12.0",
+    "@vitest/coverage-v8": "^4.1.2",
+    "eslint": "^10.1.0",
+    "eslint-plugin-svelte": "^3.16.0",
+    "globals": "^17.4.0",
+    "jsdom": "^29.0.1",
+    "msw": "^2.12.14",
+    "openapi-typescript": "^7.13.0",
+    "svelte": "^5.53.12",
+    "svelte-check": "^4.4.5",
+    "svelte-eslint-parser": "^1.6.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.57.2",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.2"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.8.0",
+    "openapi-fetch": "^0.17.0",
+    "svelte-spa-router": "^5.0.0"
+  }
+}

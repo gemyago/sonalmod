@@ -1,0 +1,88 @@
+# Instruction to create plan of the work
+
+## Goal
+
+To guide an AI assistant in creating a detailed plan of the work in Markdown format, based on an initial user prompt. The plan should be clear, actionable, and suitable for a junior developer to understand and implement the required change.
+
+## Process
+
+1.  **Receive Initial Prompt:** The user provides a brief description or request for a new feature or functionality, optionally referencing existing document
+2.  **Do Research:** Before creating the plan, the AI *must* do the research of the codebase to gather sufficient detail. The goal is to understand the "what", "why" and most important **how** of the requested work.
+3.  **Generate Plan:** Based on the initial prompt and the research, generate the plan using the structure outlined below.
+4.  **Save the Plan:** Save the generated document as `plan-[feature-name].md` inside the `/docs/implementation/[feature-name]` directory (relevant to the module).
+
+## Research Areas (Examples)
+
+The AI should adapt its research areas based on the prompt, but here are some common questions to explore:
+
+*   **Problem/Goal:** "What problem does this feature solve?" or "What is the main goal we want to achieve with this change?"
+*   **Core Functionality:** "What is a core functionality that this work should enable?"
+*   **Acceptance Criteria:** "How will we know when this feature is successfully implemented? What are the key success criteria?"
+*   **Scope/Boundaries:** "Are there any specific things this feature *should not* do (non-goals)?"
+*   **Data Requirements:** "What kind of data does this feature need to display or manipulate?"
+*   **Design/UI:** "Are there any existing design mockups or UI guidelines to follow?" or "Can you describe the desired look and feel?"
+*   **Edge Cases:** "Are there any potential edge cases or error conditions we should consider?"
+
+AI should do it's best to understand what needs to be built. Any small uncertainties should be listed in the resulting plan document. AI should **only** ask clarifying questions if the initial prompt is highly ambiguous and the AI has failed to understand the final outcome.
+
+## Plan Structure
+
+The generated Plan may include the following sections when applicable:
+1. **Introduction/Overview:** Briefly describe the feature and the problem it solves. State the goal.
+2. **Business Logic:** Describe (in words) main aspects of the business logic that will be implemented.
+3. **High Level Architecture:** Describe the high level architecture of the feature, list components involved.
+4. **Detailed Architecture:** For each component involved, describe how it will work and structured, which files may need to be created or updated
+5. **Key Architectural Decisions:** List key architectural decisions that were made.
+6. **Uncertainties:** List any uncertainties (if present) or areas needing further clarification.
+8. **Related Files** List all files related to the change. If new files needs to be created - mention them as well.
+7. **Task List** Detailed numbered list of tasks (steps) that needs to be taken to implement the required plan. Please note that TDD approach must be followed to implement the desired change (mention this in the task list). Please note that each task should be self contained. Module specific task completion protocol **must** be followed.
+
+### Example task format
+
+Note: application areas may have specific completion protocol or task format, follow it if provided. Otherwise use what is sensible or reasonable in your opinion.
+
+```markdown
+**Task X.X: Implement user update handling**
+- Add new `UserUpdate` struct
+- Add stub function `updateUser(update UserUpdate)` in UserCommands
+- Write failing tests (usually happy path and few edge cases)
+  - expected user is written to the database
+  - invalid user ID results in error
+  - conflicting user email results in error
+- Run affected tests
+  - Verify failure is expectation (e.g expected not to equal, exists e.t.c).
+  - Compilation errors are **not acceptable** - missing stubs should be added, test should be retried.
+- Implement `updateUser(_ update: UserUpdate)` logic
+- Run affected tests
+  - Verify all tests pass
+- Write summary to `docs/implementation/plan-<plan-slug>/summary-task-x.x.md`
+- Success criteria: As per completion protocol
+```
+
+Important notes:
+- Tests for new types/new fields are not required, only logic needs tests
+- Any task should leave the codebase in green state as per module specific task completion protocol.
+
+Last task must always be the following:
+```markdown
+**Compress implementation summaries**
+- Follow [compress-implementation-summaries.md](/.context/compress-implementation-summaries.md) to compress the implementation summaries.
+```
+
+> **Important:** Do NOT use a numbered `Task X.X:` heading for this step. It must be a non-numbered trailer so the orchestrator does not treat it as an atomic task and does not produce a `completed-task-*.md` summary file for it.
+
+## Target Audience
+
+Assume the primary reader of the Plan is a **junior LLM model**. Therefore, requirements should be explicit, unambiguous. Provide enough detail for them to understand the feature's purpose and core logic.
+
+## Output
+
+*   **Format:** Markdown (`.md`)
+*   **Location:** `docs/implementation/[feature-name]/` under the module root or global docs folder
+*   **Filename:** `plan-[feature-name].md`
+
+## Final instructions
+
+1. Do NOT start implementing the Plan
+2. Do the research as stated
+3. Avoid asking questions unless there is a **very** strong reason

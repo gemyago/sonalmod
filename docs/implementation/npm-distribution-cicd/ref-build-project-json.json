@@ -1,0 +1,19 @@
+{
+  "name": "npm-build",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": [],
+      "inputs": [
+        "{projectRoot}/scripts/**/*.sh",
+        "{projectRoot}/Makefile"
+      ],
+      "options": {
+        "command": "make test",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

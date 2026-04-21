@@ -1,0 +1,28 @@
+.go/
+go/
+bin
+tmp
+.DS_Store
+.cover
+*test.log
+.venv
+tmp
+/data
+*.log
+
+# User configs
+**/internal/config/*-user.yaml
+
+# Ignore cursor stuff for now
+.cursor
+
+# Ignore openspec stuff for now
+# Not sure if it's useful to keep it
+openspec
+
+# Node stuff
+node_modules
+
+
+.nx/cache
+.nx/workspace-data

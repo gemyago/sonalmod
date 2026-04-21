@@ -1,0 +1,5 @@
+*.log
+
+# Session/agent runtime files; keep empty dir via data/.gitkeep
+data/*
+!data/.gitkeep

@@ -1,0 +1,13 @@
+go 1.26.1
+
+use ./apps/sonalmod
+
+use ./runtime
+
+use ./tools/firecrawl
+
+use ./tools/workspacefs
+
+use ./tools/skills
+
+use ./tests/agent/integration-cli

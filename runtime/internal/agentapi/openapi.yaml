@@ -1,0 +1,789 @@
+openapi: 3.1.0
+info:
+  title: Sonalmod agent runtime API
+  description: |
+    HTTP API for agent runs backed by the ADK `AgentRunner` / `Run` flow in this module.
+    The runner uses `StreamingModeSSE`; HTTP responses use **Server-Sent Events** (`text/event-stream`).
+
+    **Stream contract:** Each SSE message uses standard framing (`event:` optional, `data:` JSON).
+    Every `data` line is a JSON object with an `event` discriminator (see `StreamEvent`).
+
+    **Start vs continue:** `POST /agent-runs` begins a new session; the server assigns `sessionId`
+    and emits it in the first `sessionBound` event. `POST /sessions/{sessionId}/agent-runs`
+    continues an existing session (same request body shape; session comes from the path).
+  version: 0.1.0
+
+servers:
+  - url: /
+    description: Relative to the HTTP server base URL
+
+tags:
+  - name: Agent runs
+    description: Start or continue a run and receive streamed agent output
+  - name: Sessions
+    description: List and inspect chat sessions
+  - name: Providers
+    description: Manage LLM provider configurations (CRUD)
+  - name: Models
+    description: List available models across all configured providers
+
+paths:
+  /sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      summary: List sessions for the authenticated user
+      description: |
+        Returns session metadata (id, title, timestamps) for all sessions
+        belonging to the authenticated user, sorted by last update time (most recent first).
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          description: Maximum number of sessions to return (1–100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          description: Number of sessions to skip (for pagination). Defaults to 0.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Paginated list of session metadata.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /agent-runs:
+    post:
+      tags: [Agent runs]
+      operationId: startAgentRun
+      summary: Start a new agent run
+      description: |
+        Creates a new session, runs the agent with the given user message, and streams events over SSE.
+        The assigned `sessionId` appears in the first `sessionBound` event in the stream.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRunRequest'
+      responses:
+        '200':
+          description: SSE stream of agent events until the run completes or errors.
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                default: text/event-stream; charset=utf-8
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  UTF-8 SSE stream. Each event’s `data` field is JSON matching `StreamEvent`
+                  (see examples and components).
+              examples:
+                sample:
+                  value: |
+                    event: sessionBound
+                    data: {"event":"sessionBound","sessionId":"550e8400-e29b-41d4-a716-446655440000"}
+
+                    event: agent
+                    data: {"event":"agent","partial":true,"content":{"parts":[{"text":"Hello"}]}}
+
+                    event: agent
+                    data: {"event":"agent","partial":false,"turnComplete":true,"content":{"parts":[{"text":"Hello, world."}]}}
+
+                    event: done
+                    data: {"event":"done"}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sessions/{sessionId}:
+    get:
+      tags: [Agent runs]
+      operationId: readSession
+      summary: Read session events (replay history and optionally tail live run)
+      description: |
+        Replays all historical session events as SSE frames. If a run is currently active for the
+        session, the stream stays open and continues forwarding live events until the run completes.
+        If the session is idle, the stream ends with a `done` event after replaying history.
+
+        Stream order:
+        1. `sessionBound` event (confirms the session id)
+        2. `sessionStatus` event (`active` or `idle`)
+        3. Zero or more `agent` events replayed from history
+        4. If active: continues with live `agent` events until the run finishes
+        5. `done` event
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: SSE stream replaying session events; stays open if a run is active.
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                default: text/event-stream; charset=utf-8
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  UTF-8 SSE stream. Each event's `data` field is JSON matching `StreamEvent`.
+        '404':
+          description: Session not found.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /sessions/{sessionId}/agent-runs:
+    post:
+      tags: [Agent runs]
+      operationId: continueAgentRun
+      summary: Continue an agent run for an existing session
+      description: |
+        Sends a new user message in the given session and streams the agent response over SSE.
+        Same request body as `startAgentRun`; `sessionId` is taken from the path (from a prior
+        `sessionBound` event or a client-chosen id, depending on server policy).
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRunRequest'
+      responses:
+        '200':
+          description: SSE stream of agent events until the run completes or errors.
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                default: text/event-stream; charset=utf-8
+          content:
+            text/event-stream:
+              schema:
+                type: string
+              examples:
+                sample:
+                  value: |
+                    event: agent
+                    data: {"event":"agent","partial":true,"content":{"parts":[{"text":"Sure —"}]}}
+
+                    event: done
+                    data: {"event":"done"}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: |
+            Returned only if the server validates that the session exists before running.
+            Implementations that always resolve sessions (get-or-create) may omit this response.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /models:
+    get:
+      tags: [Models]
+      operationId: listModels
+      summary: List all available models across all providers
+      description: |
+        Returns all models configured across all providers. Each entry includes the provider name
+        to allow constructing the fully-qualified model name (`provider/model-name`) for agent runs.
+      responses:
+        '200':
+          description: List of available models.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /providers:
+    get:
+      tags: [Providers]
+      operationId: listProviders
+      summary: List all provider configurations
+      responses:
+        '200':
+          description: List of provider configurations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Providers]
+      operationId: createProvider
+      summary: Create a new provider configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProviderRequest'
+      responses:
+        '201':
+          description: Provider configuration created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /providers/{providerName}:
+    get:
+      tags: [Providers]
+      operationId: getProvider
+      summary: Get a provider configuration by name
+      parameters:
+        - $ref: '#/components/parameters/ProviderName'
+      responses:
+        '200':
+          description: Provider configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Providers]
+      operationId: updateProvider
+      summary: Update a provider configuration by name
+      parameters:
+        - $ref: '#/components/parameters/ProviderName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProviderRequest'
+      responses:
+        '200':
+          description: Updated provider configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Providers]
+      operationId: deleteProvider
+      summary: Delete a provider configuration by name
+      parameters:
+        - $ref: '#/components/parameters/ProviderName'
+      responses:
+        '204':
+          description: Provider configuration deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      description: Session identifier (e.g. UUID) returned from a previous `sessionBound` or chosen for a new conversation.
+      schema:
+        type: string
+        minLength: 1
+
+    ProviderName:
+      name: providerName
+      in: path
+      required: true
+      description: Unique provider name (primary key, e.g. `openai`, `openrouter`).
+      schema:
+        type: string
+        minLength: 1
+
+  schemas:
+    AgentRunRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          $ref: '#/components/schemas/UserMessageContent'
+        model:
+          type: string
+          description: Optional model name; empty selects the runtime default (`NewAgentRunnerParams.ModelName`).
+      additionalProperties: false
+
+    UserMessageContent:
+      description: |
+        User message for `POST /agent-runs` / continue run: text parts (always user role; not sent by clients).
+      type: object
+      properties:
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserMessagePart'
+          description: |
+            Must contain at least one segment with non-empty text after server-side validation; empty lists are rejected for POST bodies.
+      required: [parts]
+      additionalProperties: false
+
+    UserMessagePart:
+      type: object
+      description: Single text segment in a user message (request body).
+      properties:
+        text:
+          type: string
+      required: [text]
+      additionalProperties: false
+
+    AgentStreamContent:
+      description: |
+        Model output body on streamed `agent` events: text parts and optional `role` (mapped from ADK session events).
+        `parts` may be empty when only metadata is present.
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, model]
+          description: Producer of the message; may be omitted when not set on the underlying event.
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentStreamPart'
+          description: |
+            May be empty when only metadata is present; omitting `content` entirely is allowed when there is no body.
+      required: [parts]
+      additionalProperties: false
+
+    ToolCallData:
+      type: object
+      description: Tool invocation requested by the model.
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Unique call ID matching the tool result.
+        name:
+          type: string
+          description: Tool function name.
+        args:
+          type: object
+          additionalProperties: true
+          description: Arguments passed to the tool (JSON object).
+      additionalProperties: false
+
+    ToolResultData:
+      type: object
+      description: Result returned by a tool invocation.
+      required: [id, name]
+      properties:
+        id:
+          type: string
+          description: Call ID matching the original tool call.
+        name:
+          type: string
+          description: Tool function name.
+        response:
+          type: object
+          additionalProperties: true
+          description: Tool output (JSON object).
+      additionalProperties: false
+
+    AgentStreamPart:
+      type: object
+      description: |
+        A segment in streamed agent output. Exactly one of text, toolCall, or toolResult is present.
+      properties:
+        text:
+          type: string
+        toolCall:
+          $ref: '#/components/schemas/ToolCallData'
+        toolResult:
+          $ref: '#/components/schemas/ToolResultData'
+      additionalProperties: false
+
+    StreamEvent:
+      oneOf:
+        - $ref: '#/components/schemas/SessionBoundEvent'
+        - $ref: '#/components/schemas/SessionStatusEvent'
+        - $ref: '#/components/schemas/AgentStreamEvent'
+        - $ref: '#/components/schemas/StreamErrorEvent'
+        - $ref: '#/components/schemas/DoneEvent'
+      discriminator:
+        propertyName: event
+        mapping:
+          sessionBound: '#/components/schemas/SessionBoundEvent'
+          sessionStatus: '#/components/schemas/SessionStatusEvent'
+          agent: '#/components/schemas/AgentStreamEvent'
+          error: '#/components/schemas/StreamErrorEvent'
+          done: '#/components/schemas/DoneEvent'
+
+    SessionBoundEvent:
+      type: object
+      required: [event, sessionId]
+      properties:
+        event:
+          type: string
+          const: sessionBound
+        sessionId:
+          type: string
+          description: Use this id for `POST /sessions/{sessionId}/agent-runs`.
+      additionalProperties: false
+
+    SessionStatusEvent:
+      type: object
+      required: [event, status]
+      properties:
+        event:
+          type: string
+          const: sessionStatus
+        status:
+          type: string
+          enum: [active, idle]
+          description: Whether a run is currently in progress for this session.
+      additionalProperties: false
+
+    AgentStreamEvent:
+      type: object
+      description: |
+        Carries a slice of ADK `session.Event` / `model.LLMResponse` fields relevant to clients
+        (text streaming, partial chunks, completion). Servers may add optional ids or metadata.
+      required: [event]
+      properties:
+        event:
+          type: string
+          const: agent
+        id:
+          type: string
+        author:
+          type: string
+        branch:
+          type: string
+        invocationId:
+          type: string
+        partial:
+          type: boolean
+          description: Incremental model output; when false and `turnComplete` is true, chunk is final for the turn.
+        turnComplete:
+          type: boolean
+        interrupted:
+          type: boolean
+        content:
+          $ref: '#/components/schemas/AgentStreamContent'
+        errorCode:
+          type: string
+          description: Present when the agent surfaced an error on the ADK session event / LLM response.
+        errorMessage:
+          type: string
+      additionalProperties: true
+
+    StreamErrorEvent:
+      type: object
+      required: [event, message]
+      properties:
+        event:
+          type: string
+          const: error
+        code:
+          type: string
+        message:
+          type: string
+          description: Human-readable failure; after this, the stream may end.
+      additionalProperties: false
+
+    DoneEvent:
+      type: object
+      required: [event]
+      properties:
+        event:
+          type: string
+          const: done
+      additionalProperties: false
+
+    ModelConfig:
+      type: object
+      description: A model available through a provider.
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Technical model identifier (e.g., "gpt-4.1").
+          minLength: 1
+        displayName:
+          type: string
+          description: Optional human-friendly label (e.g., "GPT 4.1").
+        summarization:
+          type: boolean
+          description: >
+            Designates this model for summarization tasks (e.g. generating session titles).
+            If multiple models have this enabled, the first one found is used.
+          default: false
+      additionalProperties: false
+
+    ModelInfo:
+      type: object
+      description: A model available across providers, including the provider name for fully-qualified identification.
+      required: [provider, name]
+      properties:
+        provider:
+          type: string
+          description: Provider name (prefix in fully-qualified model names like `provider/model-name`).
+        name:
+          type: string
+          description: Technical model identifier (e.g., "gpt-4.1").
+        displayName:
+          type: string
+          description: Optional human-friendly label.
+      additionalProperties: false
+
+    ModelListResponse:
+      type: object
+      description: List of available models across all providers.
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInfo'
+      additionalProperties: false
+
+    SessionMetadata:
+      type: object
+      required: [sessionId, title, createdAt, updatedAt]
+      properties:
+        sessionId:
+          type: string
+        title:
+          type: string
+          description: >
+            Session title. Always non-empty — resolved by the backend.
+            Generated via LLM summarization (if a summarization model is designated),
+            derived from the first user message, or a date-based fallback for sessions
+            without a stored title.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    SessionListResponse:
+      type: object
+      required: [sessions, total]
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionMetadata'
+        total:
+          type: integer
+          description: Total number of sessions matching the query (before limit/offset).
+      additionalProperties: false
+
+    CreateProviderRequest:
+      type: object
+      description: Request body for creating a new provider configuration.
+      required: [name, type, baseUrl, apiKey]
+      properties:
+        name:
+          type: string
+          description: Unique technical name (primary key). Must match `^[a-z][a-z0-9-]*$`. Immutable after creation.
+          minLength: 1
+        type:
+          type: string
+          description: Provider protocol type. Only `openai-compatible` is supported. Immutable after creation.
+          minLength: 1
+        displayName:
+          type: string
+          description: Optional human-friendly label.
+        baseUrl:
+          type: string
+          description: Base URL of the provider API endpoint.
+          minLength: 1
+        apiKey:
+          type: string
+          description: API key for authentication. Stored in plaintext (local/dev use).
+          minLength: 1
+        models:
+          type: array
+          description: Models available through this provider.
+          items:
+            $ref: '#/components/schemas/ModelConfig'
+      additionalProperties: false
+
+    UpdateProviderRequest:
+      type: object
+      description: Request body for updating a provider configuration. `name` and `type` are immutable and not accepted here.
+      required: [baseUrl]
+      properties:
+        displayName:
+          type: string
+          description: Human-friendly label.
+        baseUrl:
+          type: string
+          description: Base URL of the provider API endpoint.
+          minLength: 1
+        apiKey:
+          type: string
+          description: API key for authentication. Omit to keep the current value.
+        models:
+          type: array
+          description: Models available through this provider. Replaces the existing list.
+          items:
+            $ref: '#/components/schemas/ModelConfig'
+      additionalProperties: false
+
+    ProviderResponse:
+      type: object
+      description: A provider configuration as returned by the API (API key is masked).
+      required: [name, type, baseUrl, apiKeyPreview, createdAt, updatedAt, models]
+      properties:
+        name:
+          type: string
+          description: Unique technical name (primary key).
+        type:
+          type: string
+          description: Provider protocol type.
+        displayName:
+          type: string
+          description: Human-friendly label (may be empty).
+        baseUrl:
+          type: string
+          description: Base URL of the provider API endpoint.
+        apiKeyPreview:
+          type: string
+          description: Masked API key preview (e.g. `...xYz1`). Never the full key.
+        models:
+          type: array
+          description: Models available through this provider.
+          items:
+            $ref: '#/components/schemas/ModelConfig'
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 creation timestamp.
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 last-update timestamp.
+      additionalProperties: false
+
+    ProviderListResponse:
+      type: object
+      description: List of provider configurations.
+      required: [providers]
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderResponse'
+      additionalProperties: false
+
+    ProblemDetails:
+      type: object
+      description: RFC 9457 problem details (subset).
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+      additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Malformed request body or validation failure.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Unauthorized:
+      description: Authentication required or invalid credentials.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    Conflict:
+      description: Resource name conflict (duplicate key).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'

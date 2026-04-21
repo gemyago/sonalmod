@@ -1,0 +1,19 @@
+dir: '{{.InterfaceDirRelative}}'
+template: testify
+template-data:
+  mock-build-tags: '!release'
+  unroll-variadic: true
+
+packages:
+  github.com/gemyago/sonalmod/apps/sonalmod/internal/auth:
+    interfaces:
+      userStore:
+      jwtService:
+      refreshTokenStore:
+      passwordHasher:
+  github.com/gemyago/sonalmod/apps/sonalmod/internal/api/http/middleware:
+    interfaces:
+      jwtValidator:
+  github.com/gemyago/sonalmod/apps/sonalmod/internal/api/http/v1controllers:
+    interfaces:
+      AuthenticatingService:

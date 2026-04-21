@@ -1,0 +1,773 @@
+/**
+ * Design system — layer 2 (`ds-*` primitives). See apps/sonal-ui/DESIGN.md §10.
+ * Consumes tokens from layer 1 (`src/app.css`); import after `app.css` in `main.ts`.
+ * Prefix avoids colliding with shell/layout class names. Theme: `html[data-theme]` + lib/theme.
+ *
+ * Scoped routes (Chat, Login, Nav, ToolCallBlock, Providers) already prefer layer-1
+ * variables; remaining literals here are ds-only surfaces (`--ds-ui-elev-flat`), semantic badge
+ * tints (`.ds-card__badge--*`), or nav chrome that now uses `var(--border)` / outline tokens.
+ */
+
+/* -------------------------------------------------------------------------- */
+/* Surfaces used only by these components (cards ≠ generic --surface-raised) */
+/* -------------------------------------------------------------------------- */
+
+html:not([data-theme]),
+[data-theme='dark'] {
+  --ds-ui-card-bg: var(--color-dark-surface);
+  /* Layer-2 flat demo surface only (between `--bg` and `--color-dark-surface`); no layer-1 alias yet. */
+  --ds-ui-elev-flat: #2a2626;
+}
+
+[data-theme='light'] {
+  /* Near-white card surface; matches warm primary light from layer 1 */
+  --ds-ui-card-bg: var(--color-primary-light);
+  --ds-ui-elev-flat: var(--color-light-surface);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Layout: hero, section, divider */
+/* -------------------------------------------------------------------------- */
+
+.ds-hero {
+  padding: var(--space-96) var(--space-32) 80px;
+  text-align: center;
+}
+
+.ds-hero h1,
+.ds-hero .ds-hero__title {
+  font-size: var(--font-size-h1);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-h);
+  margin: 0 0 var(--space-16);
+}
+
+.ds-hero p,
+.ds-hero .ds-hero__lead {
+  font-size: var(--font-size-body);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text);
+  max-width: 600px;
+  margin: 0 auto var(--space-32);
+}
+
+.ds-hero__actions {
+  display: flex;
+  gap: var(--space-12);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.ds-section {
+  padding: var(--space-64) var(--space-32);
+  max-width: 1000px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.ds-section-label {
+  font-size: var(--font-size-caption);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-8);
+}
+
+.ds-section-title {
+  font-size: var(--font-size-h1);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-h);
+  margin: 0 0 var(--space-32);
+}
+
+.ds-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  /* Title sizes follow `:root` `--font-size-h1` breakpoints in app.css (1023px / 639px). */
+
+  .ds-section {
+    padding: var(--space-48) var(--space-20);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Optional reference nav (marketing / design pages). App shell uses .app-nav. */
+/* -------------------------------------------------------------------------- */
+
+.ds-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 12px 32px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.ds-nav__start {
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.ds-nav__center {
+  justify-self: center;
+  display: flex;
+  gap: 24px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ds-nav__end {
+  justify-self: end;
+}
+
+.ds-nav__brand {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.ds-nav__brand:hover,
+.ds-nav__brand:focus-visible {
+  color: var(--text-h);
+}
+
+.ds-nav__center a {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.ds-nav__center a:hover,
+.ds-nav__center a:focus-visible {
+  color: var(--accent);
+}
+
+.ds-nav__cta {
+  display: inline-block;
+  padding: var(--space-4) var(--space-20);
+  border-radius: var(--radius-default);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  text-decoration: none;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  border: 1px solid var(--btn-primary-border);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.ds-nav__cta:hover,
+.ds-nav__cta:focus-visible {
+  background: var(--color-dark-surface);
+  border-color: var(--color-border-outline);
+}
+
+.ds-nav__cta:focus-visible {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+}
+
+.ds-nav__cta:active {
+  background: var(--color-primary-dark);
+}
+
+.ds-nav__github {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input);
+  opacity: 0.75;
+  text-decoration: none;
+  color: inherit;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    opacity 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.ds-nav__github:hover,
+.ds-nav__github:focus-visible {
+  opacity: 1;
+  border-color: var(--color-border-outline);
+}
+
+@media (max-width: 768px) {
+  .ds-nav__center {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Buttons */
+/* -------------------------------------------------------------------------- */
+
+.ds-btn-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ds-btn-item {
+  text-align: center;
+}
+
+.ds-btn-item__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.ds-btn {
+  display: inline-block;
+  box-sizing: border-box;
+  padding: var(--space-4) var(--space-20);
+  border-radius: var(--radius-default);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 2;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  text-align: center;
+}
+
+/* Primary: same hover/active/focus as `button.primary` in app.css (solid surface shift, not opacity). */
+.ds-btn--primary {
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-fg);
+  border: 1px solid var(--btn-primary-border);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.ds-btn--primary:hover:not(:disabled),
+.ds-btn--primary:focus-visible:not(:disabled) {
+  background: var(--color-dark-surface);
+  border-color: var(--color-border-outline);
+}
+
+.ds-btn--primary:focus-visible:not(:disabled) {
+  outline: 2px solid var(--color-accent-blue);
+  outline-offset: 2px;
+}
+
+.ds-btn--primary:active:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.ds-btn--primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ds-btn--secondary {
+  background: transparent;
+  color: var(--text-h);
+  border: 1px solid var(--color-border-outline);
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.ds-btn--secondary:hover,
+.ds-btn--secondary:focus-visible {
+  border-color: var(--text-h);
+}
+
+.ds-btn--accent {
+  background: var(--color-accent-blue);
+  color: var(--color-primary-light);
+  transition: background-color 0.15s;
+}
+
+.ds-btn--accent:hover,
+.ds-btn--accent:focus-visible {
+  background: var(--color-accent-blue-hover);
+}
+
+.ds-btn--danger {
+  background: var(--color-danger);
+  color: var(--color-primary-light);
+  transition: background-color 0.15s;
+}
+
+.ds-btn--danger:hover,
+.ds-btn--danger:focus-visible {
+  background: var(--color-danger-hover);
+}
+
+.ds-btn--success {
+  background: var(--color-success);
+  color: var(--color-primary-light);
+}
+
+.ds-btn--warning {
+  background: var(--color-warning);
+  color: var(--color-primary-light);
+}
+
+button.ds-btn {
+  font-family: inherit;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cards */
+/* -------------------------------------------------------------------------- */
+
+.ds-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 768px) {
+  .ds-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ds-card {
+  background: var(--ds-ui-card-bg);
+  border-radius: var(--radius-default);
+  padding: 24px;
+  border: 1px solid var(--border);
+  transition: border-color 0.15s;
+}
+
+.ds-card:hover {
+  border-color: var(--color-border-outline);
+}
+
+.ds-card--outline {
+  border-color: var(--color-border-outline);
+}
+
+.ds-card h3,
+.ds-card .ds-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-h);
+  margin: 0 0 8px;
+}
+
+.ds-card p,
+.ds-card .ds-card__body {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text);
+  margin: 0;
+}
+
+.ds-card__badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: var(--radius-default);
+  margin-bottom: 12px;
+}
+
+/* Tint helpers — use modifiers instead of inline rgba() */
+.ds-card__badge--accent {
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--color-accent-blue);
+}
+
+.ds-card__badge--success {
+  background: rgba(48, 209, 88, 0.1);
+  color: var(--color-success);
+}
+
+.ds-card__badge--warning {
+  background: rgba(255, 159, 10, 0.1);
+  color: var(--color-warning);
+}
+
+html:not([data-theme]) .ds-card__badge--accent,
+[data-theme='dark'] .ds-card__badge--accent {
+  background: rgba(77, 163, 255, 0.15);
+  color: var(--accent);
+}
+
+html:not([data-theme]) .ds-card__badge--success,
+[data-theme='dark'] .ds-card__badge--success {
+  background: rgba(93, 232, 130, 0.15);
+  color: var(--color-success);
+}
+
+html:not([data-theme]) .ds-card__badge--warning,
+[data-theme='dark'] .ds-card__badge--warning {
+  background: rgba(255, 184, 64, 0.15);
+  color: var(--color-warning);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Forms */
+/* -------------------------------------------------------------------------- */
+
+.ds-form-group {
+  margin-bottom: 20px;
+  max-width: 400px;
+}
+
+.ds-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-h);
+  margin-bottom: 6px;
+}
+
+.ds-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--color-input-bg);
+  color: var(--color-input-text);
+  border: 1px solid var(--border);
+  padding: 20px;
+  border-radius: var(--radius-input);
+  font-family: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+[data-theme='dark'] .ds-input {
+  color: var(--text-h);
+}
+
+.ds-input:focus {
+  border-color: var(--accent);
+}
+
+.ds-input--focus {
+  border-color: var(--accent);
+}
+
+.ds-input--error {
+  border-color: var(--color-danger);
+}
+
+.ds-form-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Typography samples (replace inline font-size on demo pages) */
+/* -------------------------------------------------------------------------- */
+
+.ds-type-h1 {
+  font-size: var(--font-size-h1);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+.ds-type-h2 {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+.ds-type-body-medium {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+.ds-type-body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-h);
+}
+
+.ds-type-tight {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-h);
+}
+
+.ds-type-caption {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 2;
+  color: var(--text-h);
+}
+
+.ds-type-code {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  font-family: var(--font-mono);
+  color: var(--text-h);
+}
+
+.ds-type-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
+
+.ds-type-sample {
+  margin-bottom: 28px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ds-type-sample:last-child {
+  border-bottom: none;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Color swatches (structure only — swatch color via modifier or CSS var) */
+/* -------------------------------------------------------------------------- */
+
+.ds-color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(155px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.ds-color-group-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text-secondary-light-bg);
+  margin: 24px 0 10px;
+}
+
+[data-theme='dark'] .ds-color-group-label {
+  color: var(--text);
+}
+
+.ds-swatch {
+  border-radius: var(--radius-default);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--ds-ui-card-bg);
+}
+
+.ds-swatch__block {
+  height: 72px;
+  width: 100%;
+  /* Set face color: class .ds-swatch__block--primary-dark or style="background:…" */
+}
+
+.ds-swatch__info {
+  padding: 10px 12px;
+}
+
+.ds-swatch__name {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 2px;
+  color: var(--text-h);
+}
+
+.ds-swatch__hex {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.ds-swatch__role {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* Named token faces for palette docs — avoids inline background for known tokens */
+.ds-swatch__block--primary-dark {
+  background: var(--color-primary-dark);
+}
+.ds-swatch__block--primary-light {
+  background: var(--color-primary-light);
+}
+.ds-swatch__block--mid-gray {
+  background: var(--color-mid-gray);
+}
+.ds-swatch__block--dark-surface {
+  background: var(--color-dark-surface);
+}
+.ds-swatch__block--light-surface {
+  background: var(--color-light-surface);
+}
+.ds-swatch__block--input-bg {
+  background: var(--color-input-bg);
+}
+.ds-swatch__block--border-gray {
+  background: var(--color-border-gray);
+}
+.ds-swatch__block--text-muted {
+  background: var(--color-text-muted);
+}
+.ds-swatch__block--accent {
+  background: var(--color-accent-blue);
+}
+.ds-swatch__block--accent-hover {
+  background: var(--color-accent-blue-hover);
+}
+.ds-swatch__block--accent-active {
+  background: var(--color-accent-blue-active);
+}
+.ds-swatch__block--danger {
+  background: var(--color-danger);
+}
+.ds-swatch__block--success {
+  background: var(--color-success);
+}
+.ds-swatch__block--warning {
+  background: var(--color-warning);
+}
+.ds-swatch__block--text-secondary {
+  background: var(--color-text-secondary-light-bg);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Spacing & radius demos */
+/* -------------------------------------------------------------------------- */
+
+.ds-spacing-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.ds-spacing-item {
+  text-align: center;
+}
+
+/* Width via custom property: style="--ds-space: 32px" */
+.ds-spacing-bar {
+  height: 28px;
+  border-radius: 2px;
+  margin-bottom: 6px;
+  width: var(--ds-space, 8px);
+  background: var(--btn-primary-bg);
+}
+
+.ds-spacing-value {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ds-radius-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ds-radius-item {
+  text-align: center;
+}
+
+.ds-radius-box {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 6px;
+  background: var(--btn-primary-bg);
+}
+
+.ds-radius-box--4 {
+  border-radius: var(--radius-default);
+}
+
+.ds-radius-box--6 {
+  border-radius: var(--radius-input);
+}
+
+.ds-radius-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.ds-radius-context {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Elevation demo cards */
+/* -------------------------------------------------------------------------- */
+
+.ds-elevation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.ds-elevation-card {
+  background: var(--ds-ui-card-bg);
+  border-radius: var(--radius-default);
+  padding: 20px;
+  text-align: center;
+}
+
+.ds-elevation-card--flat {
+  border: none;
+  background: var(--ds-ui-elev-flat);
+}
+
+.ds-elevation-card--subtle {
+  border: 1px solid var(--border);
+}
+
+.ds-elevation-card--tab {
+  border: none;
+  border-bottom: 2px solid var(--color-border-tab);
+}
+
+.ds-elevation-card--outline {
+  border: 1px solid var(--color-border-outline);
+}
+
+.ds-elevation-card__label {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--text-h);
+}
+
+.ds-elevation-card__desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}

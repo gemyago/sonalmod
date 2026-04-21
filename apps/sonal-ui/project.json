@@ -1,0 +1,53 @@
+{
+  "name": "sonal-ui",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make lint",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "make test",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "install-deps": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "[ \"$CI\" = \"true\" ] && npm ci || npm install",
+        "cwd": "apps/sonal-ui"
+      },
+      "inputs": [
+        "{projectRoot}/package-lock.json"
+      ],
+      "outputs": [
+        "{projectRoot}/node_modules"
+      ],
+      "cache": true
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "command": "npm run build",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "cache": false,
+      "dependsOn": ["install-deps"],
+      "options": {
+        "command": "npm run dev",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@sonalmod/ui",
+  "version": "0.0.0-dev",
+  "description": "Sonalmod UI static assets",
+  "license": "MIT",
+  "files": [
+    "dist/**/*",
+    "package.json"
+  ]
+}
