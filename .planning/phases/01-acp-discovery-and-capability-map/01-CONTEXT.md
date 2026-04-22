@@ -34,11 +34,10 @@ The deliverable is not a production-grade multi-backend abstraction. The deliver
 ### Implementation shape
 - Keep the experiment harness in-repo so future phases can reuse it.
 - Prefer Go for the probe tooling to match the existing repo and test patterns.
-- Reuse existing test harness conventions where practical instead of inventing a separate workflow style.
+- Extend `tests/agent/integration-cli` instead of creating a separate ACP test project, so successful experiments become the basis of long-term integration testing.
 
 ### The agent's Discretion
-- Exact package layout for the ACP probe module.
-- Whether the probe is a standalone CLI module or an extension of existing test tooling, as long as it remains easy to rerun and capture transcripts.
+- Exact package layout for ACP-specific code inside `tests/agent/integration-cli`.
 - Exact file names for experiment transcripts and capability-map docs, as long as they are stable and discoverable.
 
 </decisions>

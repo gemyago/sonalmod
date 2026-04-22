@@ -60,11 +60,11 @@ What do we need to know to plan an ACP discovery phase well for OpenCode?
 - OpenCode documentation confirms ACP support, but not every optional ACP capability needed by Sonalmod's eventual design.
 - `session/close` is not part of the stable baseline and may be absent even if useful.
 - OpenCode's note about unsupported slash commands is a reminder that "same as terminal" still has exceptions.
-- The repo currently has no ACP-specific harness, so the first implementation needs to create one before deeper conclusions are possible.
+- The repo currently has no ACP-specific path in `tests/agent/integration-cli`, so the first implementation needs to add one before deeper conclusions are possible.
 
 ## Recommended Planning Direction
 
-1. Create a small repo-local ACP probe CLI in Go, modeled after existing `tests/agent/integration-cli` patterns.
+1. Extend `tests/agent/integration-cli` with an ACP mode in Go, reusing its existing CLI and testing patterns.
 2. Make the probe record transcripts for `initialize`, `session/new`, `session/prompt`, `session/cancel`, and `session/load` when supported.
 3. Run the probe against OpenCode with a minimal set of scripted scenarios.
 4. Publish an OpenCode capability map that distinguishes:

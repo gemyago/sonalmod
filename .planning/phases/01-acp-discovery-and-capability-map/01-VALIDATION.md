@@ -18,8 +18,8 @@ created: 2026-04-22
 | Property | Value |
 |----------|-------|
 | **Framework** | go test |
-| **Config file** | `tests/agent/acp-cli/go.mod` |
-| **Quick run command** | `cd tests/agent/acp-cli && go test ./...` |
+| **Config file** | `tests/agent/integration-cli/go.mod` |
+| **Quick run command** | `cd tests/agent/integration-cli && go test ./...` |
 | **Full suite command** | `make affected-lint-test` |
 | **Estimated runtime** | ~180 seconds |
 
@@ -27,7 +27,7 @@ created: 2026-04-22
 
 ## Sampling Rate
 
-- **After every task commit:** Run `cd tests/agent/acp-cli && go test ./...`
+- **After every task commit:** Run `cd tests/agent/integration-cli && go test ./...`
 - **After every plan wave:** Run `make affected-lint-test`
 - **Before `$gsd-verify-work`:** Full suite must be green
 - **Max feedback latency:** 180 seconds
@@ -38,9 +38,9 @@ created: 2026-04-22
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 1-01-01 | 01 | 1 | CODE-01 | - | Probe negotiates ACP capabilities without writing invalid JSON-RPC to downstream stdio | unit | `cd tests/agent/acp-cli && go test ./...` | ❌ W0 | pending |
-| 1-01-02 | 01 | 1 | CODE-01 | - | Transcript writer records request and response envelopes deterministically | unit | `cd tests/agent/acp-cli && go test ./...` | ❌ W0 | pending |
-| 1-02-01 | 02 | 2 | CODE-01 | - | OpenCode capability map is derived from captured transcripts, not memory | integration | `cd tests/agent/acp-cli && go test ./...` | ❌ W0 | pending |
+| 1-01-01 | 01 | 1 | CODE-01 | - | ACP mode in integration-cli negotiates capabilities without writing invalid JSON-RPC to downstream stdio | unit | `cd tests/agent/integration-cli && go test ./...` | ❌ W0 | pending |
+| 1-01-02 | 01 | 1 | CODE-01 | - | Transcript writer records request and response envelopes deterministically | unit | `cd tests/agent/integration-cli && go test ./...` | ❌ W0 | pending |
+| 1-02-01 | 02 | 2 | CODE-01 | - | OpenCode capability map is derived from captured transcripts, not memory | integration | `cd tests/agent/integration-cli && go test ./...` | ❌ W0 | pending |
 | 1-02-02 | 02 | 2 | CODE-01 | - | Planning docs reflect the validated ACP subset and deferred features | docs-check | `rg -n "validated|deferred|unsupported" docs/implementation .planning/phases/01-acp-discovery-and-capability-map` | ❌ W0 | pending |
 
 *Status: pending / green / red / flaky*
@@ -49,9 +49,9 @@ created: 2026-04-22
 
 ## Wave 0 Requirements
 
-- [ ] `tests/agent/acp-cli/client_test.go` - probe lifecycle and capability parsing coverage
-- [ ] `tests/agent/acp-cli/transcript_test.go` - transcript capture coverage
-- [ ] `tests/agent/acp-cli/project.json` - Nx-visible test target if module is added as a standalone project
+- [ ] `tests/agent/integration-cli/acp_client_test.go` - ACP lifecycle and capability parsing coverage
+- [ ] `tests/agent/integration-cli/acp_transcript_test.go` - transcript capture coverage
+- [ ] `tests/agent/integration-cli/main.go` - ACP subcommand wiring
 
 ---
 
