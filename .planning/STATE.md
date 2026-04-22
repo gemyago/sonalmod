@@ -1,3 +1,17 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+status: unknown
+last_updated: "2026-04-22T06:21:02.441Z"
+progress:
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 2
+  completed_plans: 0
+  percent: 0
+---
+
 # Project State
 
 ## Project Reference
@@ -15,3 +29,5 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 - OpenCode is the first external coding backend to support.
 - ACP needs an experiment-first pass before the higher-level abstraction is frozen.
 - Working terminology is still provisional.
+
+**Planned Phase:** 1 (ACP Discovery And Capability Map) — 2 plans — 2026-04-22T06:21:02.437Z
