@@ -8,7 +8,7 @@
 ### Agent Profiles
 
 - [x] **AGNT-01**: User can define a configurable agent profile with a role, instructions, tool set, and execution settings.
-- [ ] **AGNT-02**: User can persist and reuse configurable agent profiles across runs.
+- [x] **AGNT-02**: User can persist and reuse configurable agent profiles across runs.
 - [x] **AGNT-03**: User can keep general agent configuration separate from ACP-specific connection details where that boundary is supported by integration findings.
 
 ### Coding Agents
