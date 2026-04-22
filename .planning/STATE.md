@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-04-22T18:52:05.981Z"
+last_updated: "2026-04-22T19:13:12.905Z"
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -20,7 +20,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 
 **Core value:** One person can define, launch, and evolve multiple kinds of agents from the same harness, including a coding agent backed by OpenCode, without rewriting the orchestration layer each time or guessing what the first external protocol actually supports.
 
-**Current focus:** Phase --phase — 02
+**Current focus:** Phase --phase — 03
 
 ## Notes
 
@@ -30,5 +30,5 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 - ACP discovery now has a validated subset documented in `docs/implementation/opencode-acp-capability-map.md`.
 - Working terminology is still provisional.
 
-**Completed Phase:** 1 (ACP Discovery And Capability Map) — 2/2 plans complete — 2026-04-22
-**Next Phase:** 2 (Agent Profile Foundation), using the validated ACP subset from Phase 1.
+**Completed Phase:** 2 (Agent Profile Foundation) — 3/3 plans complete — 2026-04-22
+**Next Phase:** 3 (OpenCode Coding Lane), building on the validated ACP subset and profile foundation.
