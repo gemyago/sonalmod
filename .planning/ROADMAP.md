@@ -76,11 +76,11 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CODE-01 | Phase 1 | Completed (2026-04-22) |
-| AGNT-01 | Phase 2 | Pending |
+| AGNT-01 | Phase 2 | In Progress (Phase 2 Plan 02-01 complete 2026-04-22) |
 | AGNT-02 | Phase 2 | Pending |
-| AGNT-03 | Phase 2 | Pending |
-| PERS-01 | Phase 2 | Pending |
-| PERS-02 | Phase 2 | Pending |
+| AGNT-03 | Phase 2 | In Progress (Phase 2 Plan 02-01 complete 2026-04-22) |
+| PERS-01 | Phase 2 | In Progress (Phase 2 Plan 02-01 complete 2026-04-22) |
+| PERS-02 | Phase 2 | In Progress (Phase 2 Plan 02-01 complete 2026-04-22) |
 | CODE-02 | Phase 3 | Pending |
 | CODE-03 | Phase 3 | Pending |
 | CODE-04 | Phase 3 | Pending |
@@ -92,4 +92,4 @@
 
 ## Current Focus
 
-Phase 2 is the next planning target, using the validated ACP subset from Phase 1.
+Phase 2 is active; Plan 02-01 is complete and Plan 02-02 is the next target.

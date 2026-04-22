@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-04-22T09:50:00Z"
+status: unknown
+last_updated: "2026-04-22T18:32:44.819Z"
 progress:
   total_phases: 4
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 100
+  total_plans: 5
+  completed_plans: 3
+  percent: 60
 ---
 
 # Project State
@@ -20,7 +20,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 
 **Core value:** One person can define, launch, and evolve multiple kinds of agents from the same harness, including a coding agent backed by OpenCode, without rewriting the orchestration layer each time or guessing what the first external protocol actually supports.
 
-**Current focus:** Phase 2 - Agent Profile Foundation
+**Current focus:** Phase --phase — 02
 
 ## Notes
 

@@ -7,9 +7,9 @@
 
 ### Agent Profiles
 
-- [ ] **AGNT-01**: User can define a configurable agent profile with a role, instructions, tool set, and execution settings.
+- [x] **AGNT-01**: User can define a configurable agent profile with a role, instructions, tool set, and execution settings.
 - [ ] **AGNT-02**: User can persist and reuse configurable agent profiles across runs.
-- [ ] **AGNT-03**: User can keep general agent configuration separate from ACP-specific connection details where that boundary is supported by integration findings.
+- [x] **AGNT-03**: User can keep general agent configuration separate from ACP-specific connection details where that boundary is supported by integration findings.
 
 ### Coding Agents
 
@@ -26,8 +26,8 @@
 
 ### Persistence
 
-- [ ] **PERS-01**: Sub-agent definitions persist across restarts.
-- [ ] **PERS-02**: Sub-agent configuration can be edited without losing previously saved definitions.
+- [x] **PERS-01**: Sub-agent definitions persist across restarts.
+- [x] **PERS-02**: Sub-agent configuration can be edited without losing previously saved definitions.
 
 ## v2 Requirements
 
@@ -54,11 +54,11 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | CODE-01 | Phase 1 | Pending |
-| AGNT-01 | Phase 2 | Pending |
+| AGNT-01 | Phase 2 | Completed (2026-04-22) |
 | AGNT-02 | Phase 2 | Pending |
-| AGNT-03 | Phase 2 | Pending |
-| PERS-01 | Phase 2 | Pending |
-| PERS-02 | Phase 2 | Pending |
+| AGNT-03 | Phase 2 | Completed (2026-04-22) |
+| PERS-01 | Phase 2 | Completed (2026-04-22) |
+| PERS-02 | Phase 2 | Completed (2026-04-22) |
 | CODE-02 | Phase 3 | Pending |
 | CODE-03 | Phase 3 | Pending |
 | CODE-04 | Phase 3 | Pending |
