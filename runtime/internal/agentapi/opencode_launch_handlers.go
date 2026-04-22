@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -17,90 +18,117 @@ func (s *AgentAPIServer) CreateOpenCodeLaunch(w http.ResponseWriter, r *http.Req
 		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode launcher unavailable")
 		return
 	}
-
-	if callerid.FromContext(ctx) == nil {
-		writeProblemDetails(w, http.StatusUnauthorized, "Unauthorized", "authentication required")
+	launchRequest, ok := s.parseOpenCodeLaunchRequest(w, r)
+	if !ok {
 		return
+	}
+
+	result, err := s.launcherSvc.Launch(ctx, launchRequest)
+	if err != nil {
+		s.writeOpenCodeLaunchError(ctx, w, err)
+		return
+	}
+
+	response := mapOpenCodeLaunchResponse(*result)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func (s *AgentAPIServer) parseOpenCodeLaunchRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+) (agent.OpenCodeLaunchRequest, bool) {
+	if callerid.FromContext(r.Context()) == nil {
+		writeProblemDetails(w, http.StatusUnauthorized, "Unauthorized", "authentication required")
+		return agent.OpenCodeLaunchRequest{}, false
 	}
 
 	var req CreateOpenCodeLaunchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.logger.DebugContext(ctx, "CreateOpenCodeLaunch: decode body", "err", err)
+		s.logger.DebugContext(r.Context(), "CreateOpenCodeLaunch: decode body", "err", err)
 		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "malformed JSON request body")
-		return
+		return agent.OpenCodeLaunchRequest{}, false
 	}
 
 	profileName := strings.TrimSpace(req.ProfileName)
 	if profileName == "" {
 		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
-		return
+		return agent.OpenCodeLaunchRequest{}, false
 	}
 	prompt := strings.TrimSpace(req.Prompt)
 	if prompt == "" {
 		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "prompt is required")
-		return
+		return agent.OpenCodeLaunchRequest{}, false
 	}
 
-	launchRequest := agent.OpenCodeLaunchRequest{
+	request := agent.OpenCodeLaunchRequest{
 		ProfileName: profileName,
 		Prompt:      prompt,
 	}
 	if req.BindingName != nil {
-		launchRequest.BindingName = strings.TrimSpace(*req.BindingName)
+		request.BindingName = strings.TrimSpace(*req.BindingName)
 	}
 
-	result, err := s.launcherSvc.Launch(ctx, launchRequest)
-	if err != nil {
-		var launchErr *agent.OpenCodeLaunchError
-		if errors.As(err, &launchErr) {
-			switch launchErr.Kind {
-			case agent.OpenCodeLaunchErrorKindValidation:
-				writeProblemDetails(w, http.StatusBadRequest, "Bad Request", launchErr.Err.Error())
-				return
-			case agent.OpenCodeLaunchErrorKindNotFound:
-				writeProblemDetails(w, http.StatusNotFound, "Not Found", "saved profile or binding not found")
-				return
-			case agent.OpenCodeLaunchErrorKindLaunchFailed:
-				writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode launch failed")
-				return
+	return request, true
+}
+
+func (s *AgentAPIServer) writeOpenCodeLaunchError(
+	ctx context.Context,
+	w http.ResponseWriter,
+	err error,
+) {
+	var launchErr *agent.OpenCodeLaunchError
+	if errors.As(err, &launchErr) {
+		switch launchErr.Kind {
+		case agent.OpenCodeLaunchErrorKindValidation:
+			detail := "invalid launch request"
+			if launchErr.Err != nil {
+				detail = launchErr.Err.Error()
 			}
+			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", detail)
+			return
+		case agent.OpenCodeLaunchErrorKindNotFound:
+			writeProblemDetails(w, http.StatusNotFound, "Not Found", "saved profile or binding not found")
+			return
+		case agent.OpenCodeLaunchErrorKindLaunchFailed:
+			writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode launch failed")
+			return
 		}
-		s.logger.ErrorContext(ctx, "CreateOpenCodeLaunch: launch", "err", err)
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode launch failed")
-		return
 	}
 
+	s.logger.ErrorContext(ctx, "CreateOpenCodeLaunch: launch", "err", err)
+	writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode launch failed")
+}
+
+func mapOpenCodeLaunchResponse(result agent.OpenCodeLaunchResult) OpenCodeLaunchResponse {
 	response := OpenCodeLaunchResponse{
-		ProfileName: result.ProfileName,
-		BindingName: result.BindingName,
-		SessionId:   result.SessionID,
-		Updates:     make([]OpenCodeLaunchUpdate, len(result.Updates)),
+		ProfileName:  result.ProfileName,
+		BindingName:  result.BindingName,
+		SessionId:    result.SessionID,
+		PromptResult: decodeRawObject(result.PromptResult),
+		Updates:      make([]OpenCodeLaunchUpdate, len(result.Updates)),
 	}
-	if len(result.PromptResult) > 0 {
-		raw := map[string]any{}
-		if err := json.Unmarshal(result.PromptResult, &raw); err == nil {
-			response.PromptResult = raw
-		} else {
-			response.PromptResult = map[string]any{}
-		}
-	} else {
-		response.PromptResult = map[string]any{}
-	}
+
 	for idx, update := range result.Updates {
-		payload := map[string]any{}
-		if len(update.Payload) > 0 {
-			if err := json.Unmarshal(update.Payload, &payload); err != nil {
-				payload = map[string]any{}
-			}
-		}
 		response.Updates[idx] = OpenCodeLaunchUpdate{
 			SessionId: update.SessionID,
 			Type:      update.Type,
-			Payload:   payload,
+			Payload:   decodeRawObject(update.Payload),
 		}
 	}
+	return response
+}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(response)
+func decodeRawObject(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	payload := map[string]any{}
+	unmarshalErr := json.Unmarshal(raw, &payload)
+	if unmarshalErr != nil {
+		return map[string]any{}
+	}
+	return payload
 }

@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/gemyago/sonalmod/runtime/agent"
-	cl "github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/gemyago/sonalmod/runtime/internal"
+	cl "github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

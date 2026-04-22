@@ -26,7 +26,10 @@ func TestOpenCodeLaunchHandlers(t *testing.T) {
 
 	newHandler := func(t *testing.T) http.Handler {
 		t.Helper()
-		bindingsSvc, err := agent.NewFileOpenCodeBindingService(t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		bindingsSvc, err := agent.NewFileOpenCodeBindingService(
+			t.TempDir(),
+			slog.New(slog.NewTextHandler(io.Discard, nil)),
+		)
 		require.NoError(t, err)
 		srv := NewAgentAPIServer(ServerParams{
 			Runner:                 agent.NewMockAgentRunner(t),
@@ -145,6 +148,119 @@ func TestOpenCodeLaunchHandlers(t *testing.T) {
 		h.ServeHTTP(res, req)
 		require.Equal(t, http.StatusInternalServerError, res.Code)
 	})
+
+	t.Run("returns internal error when launcher is missing", func(t *testing.T) {
+		t.Parallel()
+		bindingsSvc, err := agent.NewFileOpenCodeBindingService(
+			t.TempDir(),
+			slog.New(slog.NewTextHandler(io.Discard, nil)),
+		)
+		require.NoError(t, err)
+		srv := NewAgentAPIServer(ServerParams{
+			Runner:                 agent.NewMockAgentRunner(t),
+			Logger:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
+			IDGen:                  NewMockIDGen(),
+			RequestMapper:          NewAgentAPIRequestMapper(),
+			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
+			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			AgentProfilesService:   &mockAgentProfilesService{},
+			OpenCodeBindingService: bindingsSvc,
+		})
+		h := HandlerFromMux(srv, http.NewServeMux())
+		ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: "user-main"})
+		req := httptest.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"/opencode-launches",
+			strings.NewReader(`{"profileName":"profile-main","prompt":"Write tests"}`),
+		)
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		require.Equal(t, http.StatusInternalServerError, res.Code)
+	})
+
+	t.Run("returns bad request for malformed JSON and missing fields", func(t *testing.T) {
+		t.Parallel()
+		h := newHandler(t)
+		ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: "user-main"})
+
+		malformedReq := httptest.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"/opencode-launches",
+			strings.NewReader(`{`),
+		)
+		malformedRes := httptest.NewRecorder()
+		h.ServeHTTP(malformedRes, malformedReq)
+		require.Equal(t, http.StatusBadRequest, malformedRes.Code)
+
+		missingProfileReq := httptest.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"/opencode-launches",
+			strings.NewReader(`{"profileName":" ","prompt":"hello"}`),
+		)
+		missingProfileRes := httptest.NewRecorder()
+		h.ServeHTTP(missingProfileRes, missingProfileReq)
+		require.Equal(t, http.StatusBadRequest, missingProfileRes.Code)
+
+		missingPromptReq := httptest.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"/opencode-launches",
+			strings.NewReader(`{"profileName":"profile-main","prompt":" "}`),
+		)
+		missingPromptRes := httptest.NewRecorder()
+		h.ServeHTTP(missingPromptRes, missingPromptReq)
+		require.Equal(t, http.StatusBadRequest, missingPromptRes.Code)
+	})
+
+	t.Run("maps unknown errors to internal server error", func(t *testing.T) {
+		t.Parallel()
+		h := newHandlerWithLaunchError(t, errors.New("unknown failure"))
+		ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: "user-main"})
+		req := httptest.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"/opencode-launches",
+			strings.NewReader(`{"profileName":"profile-main","prompt":"Write tests"}`),
+		)
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		require.Equal(t, http.StatusInternalServerError, res.Code)
+	})
+
+	t.Run("handles non-object prompt result and update payload", func(t *testing.T) {
+		t.Parallel()
+		h := newHandlerWithLaunchResult(
+			t,
+			cl.OpenCodeLaunchResult{
+				ProfileName:  "profile-main",
+				BindingName:  "binding-main",
+				SessionID:    "session-main",
+				PromptResult: []byte(`"text"`),
+				Updates: []cl.OpenCodeACPUpdate{
+					{SessionID: "session-main", Type: "delta", Payload: []byte(`[]`)},
+				},
+			},
+		)
+		ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: "user-main"})
+		req := httptest.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			"/opencode-launches",
+			strings.NewReader(`{"profileName":"profile-main","prompt":"Write tests"}`),
+		)
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		require.Equal(t, http.StatusCreated, res.Code)
+
+		var payload OpenCodeLaunchResponse
+		require.NoError(t, json.NewDecoder(res.Body).Decode(&payload))
+		assert.Equal(t, map[string]any{}, payload.PromptResult)
+		require.Len(t, payload.Updates, 1)
+		assert.Equal(t, map[string]any{}, payload.Updates[0].Payload)
+	})
 }
 
 func newHandlerWithLaunchError(t *testing.T, launchErr error) http.Handler {
@@ -161,6 +277,27 @@ func newHandlerWithLaunchError(t *testing.T, launchErr error) http.Handler {
 		AgentProfilesService:   &mockAgentProfilesService{},
 		OpenCodeBindingService: bindingsSvc,
 		OpenCodeLauncher:       newStubOpenCodeLauncherWithError(launchErr),
+	})
+	return HandlerFromMux(srv, http.NewServeMux())
+}
+
+func newHandlerWithLaunchResult(t *testing.T, result cl.OpenCodeLaunchResult) http.Handler {
+	t.Helper()
+	bindingsSvc, err := agent.NewFileOpenCodeBindingService(
+		t.TempDir(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	require.NoError(t, err)
+	srv := NewAgentAPIServer(ServerParams{
+		Runner:                 agent.NewMockAgentRunner(t),
+		Logger:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
+		IDGen:                  NewMockIDGen(),
+		RequestMapper:          NewAgentAPIRequestMapper(),
+		SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
+		ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+		AgentProfilesService:   &mockAgentProfilesService{},
+		OpenCodeBindingService: bindingsSvc,
+		OpenCodeLauncher:       newStubOpenCodeLauncher(result),
 	})
 	return HandlerFromMux(srv, http.NewServeMux())
 }

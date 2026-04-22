@@ -112,6 +112,23 @@ func newOpenCodeBindingService(deps RuntimeDeps) (agent.OpenCodeBindingService, 
 	return svc, nil
 }
 
+func autoMigrateRuntimeServices(
+	runner *agent.Runner,
+	agentProfilesSvc agent.AgentProfilesService,
+	openCodeBindingSvc agent.OpenCodeBindingService,
+) error {
+	if err := runner.AutoMigrate(); err != nil {
+		return fmt.Errorf("auto migrate database: %w", err)
+	}
+	if err := agentProfilesSvc.AutoMigrate(); err != nil {
+		return fmt.Errorf("auto migrate agent profiles database: %w", err)
+	}
+	if err := openCodeBindingSvc.AutoMigrate(); err != nil {
+		return fmt.Errorf("auto migrate opencode bindings database: %w", err)
+	}
+	return nil
+}
+
 func registerRuntime(container *dig.Container) error {
 	return di.ProvideAll(
 		container,
@@ -198,14 +215,8 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 	}
 
 	if deps.AgentRuntimeStorageType == storageTypeDatabase && deps.AgentRuntimeDatabaseAutoMigrate {
-		if err = runner.AutoMigrate(); err != nil {
-			return nil, fmt.Errorf("auto migrate database: %w", err)
-		}
-		if err = agentProfilesSvc.AutoMigrate(); err != nil {
-			return nil, fmt.Errorf("auto migrate agent profiles database: %w", err)
-		}
-		if err = openCodeBindingSvc.AutoMigrate(); err != nil {
-			return nil, fmt.Errorf("auto migrate opencode bindings database: %w", err)
+		if err = autoMigrateRuntimeServices(runner, agentProfilesSvc, openCodeBindingSvc); err != nil {
+			return nil, err
 		}
 	}
 

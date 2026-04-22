@@ -12,14 +12,24 @@ import (
 func (s *AgentAPIServer) ListOpenCodeBindings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if s.bindingsSvc == nil {
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode binding service unavailable")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"opencode binding service unavailable",
+		)
 		return
 	}
 
 	bindings, err := s.bindingsSvc.List(ctx)
 	if err != nil {
 		s.logger.ErrorContext(ctx, "ListOpenCodeBindings: list", "err", err)
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "failed to list opencode bindings")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"failed to list opencode bindings",
+		)
 		return
 	}
 
@@ -33,7 +43,12 @@ func (s *AgentAPIServer) ListOpenCodeBindings(w http.ResponseWriter, r *http.Req
 func (s *AgentAPIServer) CreateOpenCodeBinding(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if s.bindingsSvc == nil {
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode binding service unavailable")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"opencode binding service unavailable",
+		)
 		return
 	}
 
@@ -81,7 +96,12 @@ func (s *AgentAPIServer) CreateOpenCodeBinding(w http.ResponseWriter, r *http.Re
 func (s *AgentAPIServer) GetOpenCodeBinding(w http.ResponseWriter, r *http.Request, bindingName BindingName) {
 	ctx := r.Context()
 	if s.bindingsSvc == nil {
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode binding service unavailable")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"opencode binding service unavailable",
+		)
 		return
 	}
 
@@ -92,7 +112,12 @@ func (s *AgentAPIServer) GetOpenCodeBinding(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		s.logger.ErrorContext(ctx, "GetOpenCodeBinding: get", "err", err)
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "failed to get opencode binding")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"failed to get opencode binding",
+		)
 		return
 	}
 
@@ -106,7 +131,12 @@ func (s *AgentAPIServer) GetOpenCodeBinding(w http.ResponseWriter, r *http.Reque
 func (s *AgentAPIServer) UpdateOpenCodeBinding(w http.ResponseWriter, r *http.Request, bindingName BindingName) {
 	ctx := r.Context()
 	if s.bindingsSvc == nil {
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode binding service unavailable")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"opencode binding service unavailable",
+		)
 		return
 	}
 
@@ -152,7 +182,12 @@ func (s *AgentAPIServer) UpdateOpenCodeBinding(w http.ResponseWriter, r *http.Re
 func (s *AgentAPIServer) DeleteOpenCodeBinding(w http.ResponseWriter, r *http.Request, bindingName BindingName) {
 	ctx := r.Context()
 	if s.bindingsSvc == nil {
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "opencode binding service unavailable")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"opencode binding service unavailable",
+		)
 		return
 	}
 
@@ -162,7 +197,12 @@ func (s *AgentAPIServer) DeleteOpenCodeBinding(w http.ResponseWriter, r *http.Re
 			return
 		}
 		s.logger.ErrorContext(ctx, "DeleteOpenCodeBinding: delete", "err", err)
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "failed to delete opencode binding")
+		writeProblemDetails(
+			w,
+			http.StatusInternalServerError,
+			"Internal Server Error",
+			"failed to delete opencode binding",
+		)
 		return
 	}
 
