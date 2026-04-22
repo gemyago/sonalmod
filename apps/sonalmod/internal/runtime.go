@@ -173,6 +173,9 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 		if err = runner.AutoMigrate(); err != nil {
 			return nil, fmt.Errorf("auto migrate database: %w", err)
 		}
+		if err = agentProfilesSvc.AutoMigrate(); err != nil {
+			return nil, fmt.Errorf("auto migrate agent profiles database: %w", err)
+		}
 	}
 
 	httpHandler, err := httpapi.NewHandler(httpapi.HandlerArgs{
