@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"regexp"
 	"slices"
 	"strings"
@@ -82,38 +81,6 @@ type OpenCodeBindingService interface {
 
 	// AutoMigrate applies required persistence migrations for the current backend.
 	AutoMigrate() error
-}
-
-// NewFileOpenCodeBindingService creates a file-backed OpenCode bindings service.
-func NewFileOpenCodeBindingService(
-	baseDir string,
-	logger *slog.Logger,
-) (OpenCodeBindingService, error) {
-	return NewFileOpenCodeBindingPersistence(baseDir, logger)
-}
-
-// NewDatabaseOpenCodeBindingService creates a DB-backed OpenCode bindings service.
-func NewDatabaseOpenCodeBindingService(
-	dsn string,
-	logger *slog.Logger,
-	tablePrefix string,
-) (OpenCodeBindingService, error) {
-	return NewDatabaseOpenCodeBindingPersistence(dsn, logger, tablePrefix)
-}
-
-func NewFileOpenCodeBindingPersistence(
-	_ string,
-	_ *slog.Logger,
-) (OpenCodeBindingService, error) {
-	return nil, errors.New("file open code binding persistence is not implemented")
-}
-
-func NewDatabaseOpenCodeBindingPersistence(
-	_ string,
-	_ *slog.Logger,
-	_ string,
-) (OpenCodeBindingService, error) {
-	return nil, errors.New("database open code binding persistence is not implemented")
 }
 
 func normalizeCreateOpenCodeBindingParams(

@@ -110,6 +110,12 @@ func TestDatabaseOpenCodeBindingService(t *testing.T) {
 		svc2 := makeService(t, dsn, "pref_")
 		loaded, err := svc2.Get(ctx, created.Name)
 		require.NoError(t, err)
-		assert.Equal(t, *created, *loaded)
+		assert.Equal(t, created.Name, loaded.Name)
+		assert.Equal(t, created.ProfileName, loaded.ProfileName)
+		assert.Equal(t, created.CWD, loaded.CWD)
+		assert.Equal(t, created.AgentCommand, loaded.AgentCommand)
+		assert.Equal(t, created.LaunchOptions, loaded.LaunchOptions)
+		assert.Equal(t, created.CreatedAt.UnixNano(), loaded.CreatedAt.UnixNano())
+		assert.Equal(t, created.UpdatedAt.UnixNano(), loaded.UpdatedAt.UnixNano())
 	})
 }
