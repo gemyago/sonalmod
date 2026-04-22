@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-04-22T19:59:18.827Z"
+last_updated: "2026-04-22T20:16:55.437Z"
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 8
-  completed_plans: 6
-  percent: 75
+  completed_plans: 7
+  percent: 88
 ---
 
 # Project State
@@ -37,7 +37,9 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 
 - OpenCode bindings persist connection defaults separately from general profiles.
 - OpenCode binding persistence supports both YAML files and SQL with restart-safe reuse.
+- Launch path is constrained to initialize/session-new/session-prompt plus session/update handling only.
+- Launcher resolves saved profile+binding first and emits typed launch error kinds for API mapping.
 
 ## Last Session
 
-- Completed 03-01-PLAN.md
+- Completed 03-02-PLAN.md
