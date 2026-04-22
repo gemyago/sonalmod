@@ -22,11 +22,18 @@ func TestHandler(t *testing.T) {
 		require.NoError(t, err)
 		return runner
 	}
+	newTestProfilesService := func(t *testing.T) agent.AgentProfilesService {
+		t.Helper()
+		svc, err := agent.NewFileAgentProfilesService(t.TempDir(), rootTestLogger)
+		require.NoError(t, err)
+		return svc
+	}
 
 	t.Run("creates handler", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
 			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			AgentProfilesService:   newTestProfilesService(t),
 		}, WithLogger(rootTestLogger))
 		require.NoError(t, err)
 		require.NotNil(t, handler)
@@ -44,15 +51,27 @@ func TestHandler(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
 			ProvidersConfigService: nil,
+			AgentProfilesService:   newTestProfilesService(t),
 		}, WithLogger(rootTestLogger))
 		require.ErrorContains(t, err, "providers config service is required")
 		assert.Nil(t, handler)
 	})
 
-	t.Run("creates handler with non-nil ProvidersConfigService", func(t *testing.T) {
+	t.Run("returns error if AgentProfilesService is nil", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
 			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			AgentProfilesService:   nil,
+		}, WithLogger(rootTestLogger))
+		require.ErrorContains(t, err, "agent profiles service is required")
+		assert.Nil(t, handler)
+	})
+
+	t.Run("creates handler with non-nil services", func(t *testing.T) {
+		handler, err := NewHandler(HandlerArgs{
+			Runner:                 newTestRunner(t),
+			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			AgentProfilesService:   newTestProfilesService(t),
 		}, WithLogger(rootTestLogger))
 		require.NoError(t, err)
 		require.NotNil(t, handler)

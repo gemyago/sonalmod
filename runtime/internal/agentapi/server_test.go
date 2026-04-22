@@ -46,6 +46,7 @@ func TestAgentAPIServer(t *testing.T) {
 			RequestMapper:          NewAgentAPIRequestMapper(),
 			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
+			AgentProfilesService:   &mockAgentProfilesService{},
 		})
 	}
 
@@ -357,6 +358,7 @@ func TestAgentAPIServer(t *testing.T) {
 				RequestMapper:          NewAgentAPIRequestMapper(),
 				SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 				ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
+				AgentProfilesService:   &mockAgentProfilesService{},
 			})
 
 			mux := http.NewServeMux()

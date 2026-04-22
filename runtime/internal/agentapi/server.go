@@ -10,6 +10,7 @@ import (
 
 	"github.com/gemyago/sonalmod/runtime/agent"
 	rt "github.com/gemyago/sonalmod/runtime/internal"
+	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 )
@@ -31,6 +32,7 @@ type AgentAPIServer struct {
 	reqMap       *AgentAPIRequestMapper
 	sse          *AgentAPISSEWriter
 	providersSvc lp.ProvidersConfigService
+	profilesSvc  ap.AgentProfilesService
 	modelsLister ModelsLister
 }
 
@@ -55,6 +57,7 @@ type ServerParams struct {
 	RequestMapper          *AgentAPIRequestMapper
 	SSEWriter              *AgentAPISSEWriter
 	ProvidersConfigService lp.ProvidersConfigService
+	AgentProfilesService   ap.AgentProfilesService
 	// ModelsLister is optional; when nil, ListModels returns an empty list.
 	ModelsLister ModelsLister
 }
@@ -68,6 +71,7 @@ func NewAgentAPIServer(p ServerParams) *AgentAPIServer {
 		reqMap:       p.RequestMapper,
 		sse:          p.SSEWriter,
 		providersSvc: p.ProvidersConfigService,
+		profilesSvc:  p.AgentProfilesService,
 		modelsLister: p.ModelsLister,
 	}
 }

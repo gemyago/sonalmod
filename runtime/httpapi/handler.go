@@ -17,6 +17,8 @@ type HandlerArgs struct {
 
 	// ProvidersConfigService is required.
 	ProvidersConfigService agent.ProvidersConfigService
+	// AgentProfilesService is required.
+	AgentProfilesService agent.AgentProfilesService
 
 	// ModelsLister is optional. When provided, enables the GET /models endpoint.
 	// Typically set to the runner's models locator when dynamic providers are used.
@@ -43,6 +45,9 @@ func NewHandler(args HandlerArgs, opts ...HandlerOpt) (http.Handler, error) {
 	if args.ProvidersConfigService == nil {
 		return nil, errors.New("providers config service is required")
 	}
+	if args.AgentProfilesService == nil {
+		return nil, errors.New("agent profiles service is required")
+	}
 
 	hOpts := &handlerOpts{
 		Logger: slog.Default(),
@@ -62,6 +67,7 @@ func NewHandler(args HandlerArgs, opts ...HandlerOpt) (http.Handler, error) {
 		RequestMapper:          agentapi.NewAgentAPIRequestMapper(),
 		SSEWriter:              agentapi.NewAgentAPISSEWriter(agentapi.NewAgentAPIStreamEventMapper()),
 		ProvidersConfigService: args.ProvidersConfigService,
+		AgentProfilesService:   args.AgentProfilesService,
 		ModelsLister:           args.ModelsLister,
 	})
 	return agentapi.HandlerFromMux(server, http.NewServeMux()), nil
