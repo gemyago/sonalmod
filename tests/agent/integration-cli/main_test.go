@@ -54,6 +54,23 @@ func TestSetupCommands(t *testing.T) {
 		assert.Empty(t, session, "session default should be empty")
 	})
 
+	t.Run("acp subcommand is registered with required flags", func(t *testing.T) {
+		root := setupCommands()
+
+		acpCmd, _, err := root.Find([]string{"acp"})
+		require.NoError(t, err)
+		require.NotNil(t, acpCmd)
+		assert.Equal(t, "acp", acpCmd.Use)
+
+		annotation := acpCmd.Flags().Lookup("agent-command").Annotations
+		_, required := annotation["cobra_annotation_bash_completion_one_required_flag"]
+		assert.True(t, required, "--agent-command should be marked as required")
+
+		annotation = acpCmd.Flags().Lookup("prompt").Annotations
+		_, required = annotation["cobra_annotation_bash_completion_one_required_flag"]
+		assert.True(t, required, "--prompt should be marked as required")
+	})
+
 	t.Run("run subcommand prompt flag is required", func(t *testing.T) {
 		root := setupCommands()
 		runCmd, _, err := root.Find([]string{"run"})
