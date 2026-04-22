@@ -1,7 +1,7 @@
 package agent
 
 import (
-	"context"
+	"log/slog"
 
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 )
@@ -25,11 +25,24 @@ type CreateAgentProfileParams = ap.CreateAgentProfileParams
 type UpdateAgentProfileParams = ap.UpdateAgentProfileParams
 
 // AgentProfilesService manages persisted agent profiles.
-type AgentProfilesService interface {
-	List(ctx context.Context) ([]AgentProfile, error)
-	Get(ctx context.Context, name string) (*AgentProfile, error)
-	Create(ctx context.Context, params CreateAgentProfileParams) (*AgentProfile, error)
-	Update(ctx context.Context, name string, params UpdateAgentProfileParams) (*AgentProfile, error)
-	Delete(ctx context.Context, name string) error
-	AutoMigrate() error
+type AgentProfilesService = ap.AgentProfilesService
+
+// NewFileAgentProfilesService creates a file-based [AgentProfilesService] that stores
+// profile definitions as YAML files under {baseDir}/agent-profiles/{name}.yaml.
+func NewFileAgentProfilesService( //nolint:ireturn
+	baseDir string,
+	logger *slog.Logger,
+) (AgentProfilesService, error) {
+	return ap.NewFileAgentProfilesService(baseDir, logger)
+}
+
+// NewDatabaseAgentProfilesService creates a database-backed [AgentProfilesService] that stores
+// profile definitions in a relational database identified by the given DSN.
+// tablePrefix sets the prefix for persisted SQL table names; empty means no prefix.
+func NewDatabaseAgentProfilesService( //nolint:ireturn
+	dsn string,
+	logger *slog.Logger,
+	tablePrefix string,
+) (AgentProfilesService, error) {
+	return ap.NewDatabaseAgentProfilesService(dsn, logger, tablePrefix)
 }
