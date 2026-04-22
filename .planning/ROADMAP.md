@@ -5,7 +5,7 @@
 
 ## Phase 1: ACP Discovery And Capability Map
 
-**Goal:** Experiment with ACP through OpenCode and capture the validated capability envelope that Sonalmod should design around.
+**Goal:** Experiment with ACP through OpenCode and capture the validated ACP subset Sonalmod should design around.
 
 **Why this phase exists:** the current plan knows the first backend and protocol, but not yet enough about their real constraints to lock in the higher-level model safely.
 
@@ -13,10 +13,10 @@
 - CODE-01
 
 **Success criteria:**
-- Sonalmod has a written capability map for the subset of ACP exercised through OpenCode.
-- The project has at least one experiment that proves the basic lifecycle needed for the first integration.
-- Unsupported or unclear ACP behaviors are documented as explicit non-goals for the first slice.
-- The planning docs are updated to reflect what the experiment changed about the intended abstraction.
+- Sonalmod has a written capability map for the subset of ACP exercised through OpenCode. ✓
+- The project has at least one experiment that proves the basic lifecycle needed for the first integration. ✓
+- Unsupported or unclear ACP behaviors are documented as explicit non-goals for the first slice. ✓
+- The planning docs are updated to reflect what the experiment changed about the intended abstraction. ✓
 
 ## Phase 2: Agent Profile Foundation
 
@@ -75,7 +75,7 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CODE-01 | Phase 1 | Pending |
+| CODE-01 | Phase 1 | Completed (2026-04-22) |
 | AGNT-01 | Phase 2 | Pending |
 | AGNT-02 | Phase 2 | Pending |
 | AGNT-03 | Phase 2 | Pending |
@@ -92,4 +92,4 @@
 
 ## Current Focus
 
-Phase 1 is the next planning target.
+Phase 2 is the next planning target, using the validated ACP subset from Phase 1.

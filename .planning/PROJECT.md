@@ -43,6 +43,7 @@ One person can define, launch, and evolve multiple kinds of agents from the same
 - The first external coding backend to support is OpenCode, using ACP as the integration boundary.
 - ACP behavior and constraints are not yet understood well enough to freeze the final abstraction; the project needs an experiment-first step.
 - Terminology is intentionally provisional; "classic sub-agent" and "coding sub-agent" are still working labels, not settled product language.
+- Phase 1 probes produced a validated ACP subset in `docs/implementation/opencode-acp-capability-map.md` based on repeatable local ACP runs.
 
 ## Constraints
 
@@ -62,6 +63,7 @@ One person can define, launch, and evolve multiple kinds of agents from the same
 | Treat "general agent" and "coding agent" as a working split, not a final taxonomy | The distinction seems useful, but it should survive contact with ACP before it becomes a hard rule | — Pending |
 | Use OpenCode as the first coding backend | Gives a concrete ACP-backed integration target | — Pending |
 | Keep terminology provisional for now | Domain vocabulary will be refined after the first slice lands | — Pending |
+| Build first OpenCode integration around the validated ACP subset | Probe transcripts showed required request shapes and optional capabilities that remain unvalidated | 2026-04-22 |
 
 ## Evolution
 

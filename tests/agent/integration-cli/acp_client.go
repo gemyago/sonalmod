@@ -17,6 +17,7 @@ import (
 )
 
 const acpProcessWaitTimeout = 2 * time.Second
+const acpProtocolVersion = 1
 
 type acpExecuteParams struct {
 	Prompt       string
@@ -119,7 +120,9 @@ func newACPClientForCommand(
 func (c *acpClient) execute(ctx context.Context, params acpExecuteParams) (acpExecuteResult, error) {
 	result := acpExecuteResult{}
 
-	initializeResp, initializeErr := c.call(ctx, "initialize", map[string]any{})
+	initializeResp, initializeErr := c.call(ctx, "initialize", map[string]any{
+		"protocolVersion": acpProtocolVersion,
+	})
 	if initializeErr != nil {
 		return result, fmt.Errorf("initialize ACP session: %w", initializeErr)
 	}
@@ -134,7 +137,7 @@ func (c *acpClient) execute(ctx context.Context, params acpExecuteParams) (acpEx
 		result.SessionID = params.LoadSession
 		result.LoadedSession = true
 	} else {
-		newSessionID, createErr := c.createSession(ctx)
+		newSessionID, createErr := c.createSession(ctx, params.CWD)
 		if createErr != nil {
 			return result, fmt.Errorf("create ACP session: %w", createErr)
 		}
@@ -143,7 +146,12 @@ func (c *acpClient) execute(ctx context.Context, params acpExecuteParams) (acpEx
 
 	promptID, sendPromptErr := c.sendRequest(ctx, "session/prompt", map[string]any{
 		"sessionId": result.SessionID,
-		"prompt":    params.Prompt,
+		"prompt": []map[string]string{
+			{
+				"type": "text",
+				"text": params.Prompt,
+			},
+		},
 	})
 	if sendPromptErr != nil {
 		return result, fmt.Errorf("send session/prompt: %w", sendPromptErr)
@@ -172,8 +180,20 @@ func (c *acpClient) loadSession(ctx context.Context, sessionID string) error {
 	return loadErr
 }
 
-func (c *acpClient) createSession(ctx context.Context) (string, error) {
-	newResp, callErr := c.call(ctx, "session/new", map[string]any{})
+func (c *acpClient) createSession(ctx context.Context, cwd string) (string, error) {
+	sessionCWD := strings.TrimSpace(cwd)
+	if sessionCWD == "" {
+		currentDir, wdErr := os.Getwd()
+		if wdErr != nil {
+			return "", fmt.Errorf("determine working directory: %w", wdErr)
+		}
+		sessionCWD = currentDir
+	}
+
+	newResp, callErr := c.call(ctx, "session/new", map[string]any{
+		"cwd":        sessionCWD,
+		"mcpServers": []any{},
+	})
 	if callErr != nil {
 		return "", callErr
 	}

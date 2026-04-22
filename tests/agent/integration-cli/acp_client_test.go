@@ -45,6 +45,12 @@ func TestACPClient(t *testing.T) {
 
 		methods := outboundMethods(t, outbound.String())
 		assert.Equal(t, []string{"initialize", "session/new", "session/prompt"}, methods)
+		initializeRequest := outboundRequestAt(t, outbound.String(), 0)
+		params, ok := initializeRequest["params"].(map[string]any)
+		require.True(t, ok)
+		protocolVersion, ok := params["protocolVersion"].(float64)
+		require.True(t, ok)
+		assert.Equal(t, acpProtocolVersion, int(protocolVersion))
 	})
 
 	t.Run("uses session/load when capability is advertised", func(t *testing.T) {
@@ -364,6 +370,15 @@ func outboundMethods(t *testing.T, outbound string) []string {
 		methods = append(methods, method)
 	}
 	return methods
+}
+
+func outboundRequestAt(t *testing.T, outbound string, index int) map[string]any {
+	t.Helper()
+	lines := strings.Split(strings.TrimSpace(outbound), "\n")
+	require.Greater(t, len(lines), index)
+	var envelope map[string]any
+	require.NoError(t, json.Unmarshal([]byte(lines[index]), &envelope))
+	return envelope
 }
 
 func TestNewACPClientForCommand(t *testing.T) {
