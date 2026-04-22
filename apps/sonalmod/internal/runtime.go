@@ -72,6 +72,26 @@ func newProvidersConfigService(deps RuntimeDeps) (agent.ProvidersConfigService, 
 	return svc, nil
 }
 
+func newAgentProfilesService(deps RuntimeDeps) (agent.AgentProfilesService, error) { //nolint:ireturn
+	if deps.AgentRuntimeStorageType == storageTypeDatabase {
+		svc, err := agent.NewDatabaseAgentProfilesService(
+			deps.AgentRuntimeDatabaseDSN,
+			deps.RootLogger,
+			deps.AgentRuntimeDatabaseTablePrefix,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create database agent profiles service: %w", err)
+		}
+		return svc, nil
+	}
+
+	svc, err := agent.NewFileAgentProfilesService(deps.DataDir, deps.RootLogger)
+	if err != nil {
+		return nil, fmt.Errorf("create agent profiles service: %w", err)
+	}
+	return svc, nil
+}
+
 func registerRuntime(container *dig.Container) error {
 	return di.ProvideAll(
 		container,
@@ -106,6 +126,10 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 	}
 
 	providersSvc, err := newProvidersConfigService(deps)
+	if err != nil {
+		return nil, err
+	}
+	agentProfilesSvc, err := newAgentProfilesService(deps)
 	if err != nil {
 		return nil, err
 	}
@@ -154,6 +178,7 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 	httpHandler, err := httpapi.NewHandler(httpapi.HandlerArgs{
 		Runner:                 runner,
 		ProvidersConfigService: providersSvc,
+		AgentProfilesService:   agentProfilesSvc,
 		ModelsLister:           runner.ModelsLocator(),
 	}, httpapi.WithLogger(deps.RootLogger))
 	if err != nil {

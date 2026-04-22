@@ -130,6 +130,20 @@ func TestAgentProfileHandlers(t *testing.T) {
 			assert.Equal(t, p1.Name, resp.Profiles[0].Name)
 			assert.Equal(t, p2.Name, resp.Profiles[1].Name)
 		})
+
+		t.Run("returns 500 on service error", func(t *testing.T) {
+			t.Parallel()
+			svc := &mockAgentProfilesService{}
+			svc.Test(t)
+			svc.On("List", mock.Anything).Return([]ap.AgentProfile(nil), errors.New("storage failure"))
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agent-profiles", nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusInternalServerError, rec.Code)
+		})
 	})
 
 	t.Run("CreateAgentProfile", func(t *testing.T) {
@@ -155,7 +169,12 @@ func TestAgentProfileHandlers(t *testing.T) {
 			body := `{"name":"` + profile.Name + `","displayName":"` + profile.DisplayName + `","role":"` +
 				profile.Role + `","instructions":"` + profile.Instructions + `","toolRefs":["tool-a","tool-b"],` +
 				`"executionSettings":{"defaultModel":"` + profile.ExecutionSettings.DefaultModel + `"}}`
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agent-profiles", strings.NewReader(body))
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(body),
+			)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
@@ -170,7 +189,12 @@ func TestAgentProfileHandlers(t *testing.T) {
 			svc := &mockAgentProfilesService{}
 			svc.Test(t)
 			h := newServerWithSvc(t, svc)
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agent-profiles", strings.NewReader(`{`))
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(`{`),
+			)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -184,7 +208,12 @@ func TestAgentProfileHandlers(t *testing.T) {
 
 			h := newServerWithSvc(t, svc)
 			body := `{"name":"profile-a","role":"","instructions":"x","executionSettings":{"defaultModel":"openai/gpt-4.1"}}`
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agent-profiles", strings.NewReader(body))
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(body),
+			)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			require.Equal(t, http.StatusBadRequest, rec.Code)
@@ -198,7 +227,12 @@ func TestAgentProfileHandlers(t *testing.T) {
 
 			h := newServerWithSvc(t, svc)
 			body := `{"name":"profile-a","role":"coder","instructions":"x","executionSettings":{"defaultModel":"openai/gpt-4.1"}}`
-			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/agent-profiles", strings.NewReader(body))
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(body),
+			)
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			require.Equal(t, http.StatusConflict, rec.Code)
@@ -234,6 +268,19 @@ func TestAgentProfileHandlers(t *testing.T) {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			require.Equal(t, http.StatusNotFound, rec.Code)
+		})
+
+		t.Run("returns 500 on service error", func(t *testing.T) {
+			t.Parallel()
+			svc := &mockAgentProfilesService{}
+			svc.Test(t)
+			svc.On("Get", mock.Anything, "broken").Return(nil, errors.New("storage failure"))
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agent-profiles/broken", nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusInternalServerError, rec.Code)
 		})
 	})
 
@@ -359,6 +406,19 @@ func TestAgentProfileHandlers(t *testing.T) {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 			require.Equal(t, http.StatusNotFound, rec.Code)
+		})
+
+		t.Run("returns 500 on service error", func(t *testing.T) {
+			t.Parallel()
+			svc := &mockAgentProfilesService{}
+			svc.Test(t)
+			svc.On("Delete", mock.Anything, "broken").Return(errors.New("storage failure"))
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, "/agent-profiles/broken", nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusInternalServerError, rec.Code)
 		})
 	})
 }
