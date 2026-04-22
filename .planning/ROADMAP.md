@@ -43,6 +43,13 @@
 
 **Why this phase exists:** OpenCode is still the first concrete coding backend, but the integration should now be based on observed protocol behavior instead of assumptions.
 
+**Plans:** 3 plans
+
+Plans:
+- [x] 03-01-PLAN.md - Add OpenCode binding contracts and persistence separate from general profiles (completed 2026-04-22)
+- [ ] 03-02-PLAN.md - Implement validated-subset OpenCode ACP launch service
+- [ ] 03-03-PLAN.md - Expose binding and launch APIs and wire app runtime dependencies
+
 **Requirements covered:**
 - CODE-02
 - CODE-03
@@ -81,9 +88,9 @@
 | AGNT-03 | Phase 2 | Completed (Phase 2 Plan 02-03 complete 2026-04-22) |
 | PERS-01 | Phase 2 | Completed (Phase 2 Plan 02-03 complete 2026-04-22) |
 | PERS-02 | Phase 2 | Completed (Phase 2 Plan 02-02 complete 2026-04-22) |
-| CODE-02 | Phase 3 | Pending |
+| CODE-02 | Phase 3 | Completed (Phase 3 Plan 03-01 complete 2026-04-22) |
 | CODE-03 | Phase 3 | Pending |
-| CODE-04 | Phase 3 | Pending |
+| CODE-04 | Phase 3 | Completed (Phase 3 Plan 03-01 complete 2026-04-22) |
 | EXEC-01 | Phase 4 | Pending |
 | EXEC-02 | Phase 4 | Pending |
 | EXEC-03 | Phase 4 | Pending |
