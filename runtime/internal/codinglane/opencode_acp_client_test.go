@@ -135,11 +135,11 @@ func TestOpenCodeACPClientHelperProcess(t *testing.T) {
 			case "session/prompt":
 				writeNotification("session/update", map[string]any{
 					"sessionId": "session-1",
-					"update": map[string]any{"type": "progress", "message": "thinking"},
+					"update":    map[string]any{"type": "progress", "message": "thinking"},
 				})
 				writeNotification("session/update", map[string]any{
 					"sessionId": "session-1",
-					"update": map[string]any{"type": "final", "message": "done"},
+					"update":    map[string]any{"type": "final", "message": "done"},
 				})
 				writeResult(id, map[string]any{"ok": true})
 			default:
