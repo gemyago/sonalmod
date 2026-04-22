@@ -33,6 +33,8 @@ type AgentAPIServer struct {
 	sse          *AgentAPISSEWriter
 	providersSvc lp.ProvidersConfigService
 	profilesSvc  ap.AgentProfilesService
+	bindingsSvc  agent.OpenCodeBindingService
+	launcherSvc  agent.OpenCodeLauncher
 	modelsLister ModelsLister
 }
 
@@ -58,6 +60,8 @@ type ServerParams struct {
 	SSEWriter              *AgentAPISSEWriter
 	ProvidersConfigService lp.ProvidersConfigService
 	AgentProfilesService   ap.AgentProfilesService
+	OpenCodeBindingService agent.OpenCodeBindingService
+	OpenCodeLauncher       agent.OpenCodeLauncher
 	// ModelsLister is optional; when nil, ListModels returns an empty list.
 	ModelsLister ModelsLister
 }
@@ -72,6 +76,8 @@ func NewAgentAPIServer(p ServerParams) *AgentAPIServer {
 		sse:          p.SSEWriter,
 		providersSvc: p.ProvidersConfigService,
 		profilesSvc:  p.AgentProfilesService,
+		bindingsSvc:  p.OpenCodeBindingService,
+		launcherSvc:  p.OpenCodeLauncher,
 		modelsLister: p.ModelsLister,
 	}
 }

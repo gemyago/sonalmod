@@ -26,6 +26,8 @@ tags:
     description: Manage LLM provider configurations (CRUD)
   - name: Agent profiles
     description: Manage saved agent profile configurations (CRUD)
+  - name: OpenCode coding lane
+    description: Manage OpenCode bindings and launch coding runs from saved selectors
   - name: Models
     description: List available models across all configured providers
 
@@ -450,6 +452,141 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /opencode-bindings:
+    get:
+      tags: [OpenCode coding lane]
+      operationId: listOpenCodeBindings
+      summary: List all saved OpenCode bindings
+      responses:
+        '200':
+          description: List of saved OpenCode bindings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenCodeBindingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [OpenCode coding lane]
+      operationId: createOpenCodeBinding
+      summary: Create a new saved OpenCode binding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOpenCodeBindingRequest'
+      responses:
+        '201':
+          description: OpenCode binding created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenCodeBindingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /opencode-bindings/{bindingName}:
+    get:
+      tags: [OpenCode coding lane]
+      operationId: getOpenCodeBinding
+      summary: Get a saved OpenCode binding by name
+      parameters:
+        - $ref: '#/components/parameters/BindingName'
+      responses:
+        '200':
+          description: OpenCode binding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenCodeBindingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [OpenCode coding lane]
+      operationId: updateOpenCodeBinding
+      summary: Update mutable fields for a saved OpenCode binding
+      parameters:
+        - $ref: '#/components/parameters/BindingName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOpenCodeBindingRequest'
+      responses:
+        '200':
+          description: Updated OpenCode binding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenCodeBindingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [OpenCode coding lane]
+      operationId: deleteOpenCodeBinding
+      summary: Delete a saved OpenCode binding by name
+      parameters:
+        - $ref: '#/components/parameters/BindingName'
+      responses:
+        '204':
+          description: OpenCode binding deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /opencode-launches:
+    post:
+      tags: [OpenCode coding lane]
+      operationId: createOpenCodeLaunch
+      summary: Launch OpenCode coding run from saved profile and binding selectors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOpenCodeLaunchRequest'
+      responses:
+        '201':
+          description: OpenCode launch completed and returns session details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenCodeLaunchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   parameters:
     SessionId:
@@ -475,6 +612,15 @@ components:
       in: path
       required: true
       description: Unique profile name (primary key, e.g. `coding-agent`).
+      schema:
+        type: string
+        minLength: 1
+
+    BindingName:
+      name: bindingName
+      in: path
+      required: true
+      description: Unique OpenCode binding name (primary key, e.g. `opencode-main`).
       schema:
         type: string
         minLength: 1
@@ -976,6 +1122,156 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AgentProfileResponse'
+      additionalProperties: false
+
+    OpenCodeAgentCommand:
+      type: object
+      description: OpenCode command defaults used to launch ACP.
+      required: [command, args]
+      properties:
+        command:
+          type: string
+          minLength: 1
+          description: Command executable to run OpenCode.
+        args:
+          type: array
+          description: Command arguments passed as-is to the OpenCode executable.
+          items:
+            type: string
+            minLength: 1
+      additionalProperties: false
+
+    OpenCodeLaunchOptions:
+      type: object
+      description: OpenCode launch defaults.
+      required: [transport]
+      properties:
+        transport:
+          type: string
+          description: ACP transport mode. Only `stdio` is supported.
+          minLength: 1
+      additionalProperties: false
+
+    CreateOpenCodeBindingRequest:
+      type: object
+      description: Request body for creating an OpenCode binding.
+      required: [name, profileName, agentCommand, launchOptions]
+      properties:
+        name:
+          type: string
+          description: Unique technical binding name (primary key).
+          minLength: 1
+        profileName:
+          type: string
+          description: Name of the saved general profile associated with this binding.
+          minLength: 1
+        cwd:
+          type: string
+          description: Optional working directory used for OpenCode launch.
+        agentCommand:
+          $ref: '#/components/schemas/OpenCodeAgentCommand'
+        launchOptions:
+          $ref: '#/components/schemas/OpenCodeLaunchOptions'
+      additionalProperties: false
+
+    UpdateOpenCodeBindingRequest:
+      type: object
+      description: Request body for updating mutable OpenCode binding fields.
+      required: [agentCommand, launchOptions]
+      properties:
+        cwd:
+          type: string
+          description: Working directory used for OpenCode launch.
+        agentCommand:
+          $ref: '#/components/schemas/OpenCodeAgentCommand'
+        launchOptions:
+          $ref: '#/components/schemas/OpenCodeLaunchOptions'
+      additionalProperties: false
+
+    OpenCodeBindingResponse:
+      type: object
+      description: A saved OpenCode binding as returned by the API.
+      required: [name, profileName, cwd, agentCommand, launchOptions, createdAt, updatedAt]
+      properties:
+        name:
+          type: string
+        profileName:
+          type: string
+        cwd:
+          type: string
+        agentCommand:
+          $ref: '#/components/schemas/OpenCodeAgentCommand'
+        launchOptions:
+          $ref: '#/components/schemas/OpenCodeLaunchOptions'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    OpenCodeBindingListResponse:
+      type: object
+      description: List of saved OpenCode bindings.
+      required: [bindings]
+      properties:
+        bindings:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpenCodeBindingResponse'
+      additionalProperties: false
+
+    CreateOpenCodeLaunchRequest:
+      type: object
+      description: Launch input selecting saved profile and optional binding.
+      required: [profileName, prompt]
+      properties:
+        profileName:
+          type: string
+          description: Saved profile selector.
+          minLength: 1
+        bindingName:
+          type: string
+          description: Optional saved binding selector. When omitted, the first binding for the profile is used.
+        prompt:
+          type: string
+          description: User prompt forwarded to OpenCode launch flow.
+          minLength: 1
+      additionalProperties: false
+
+    OpenCodeLaunchUpdate:
+      type: object
+      description: Parsed ACP session/update notification from launch execution.
+      required: [sessionId, type, payload]
+      properties:
+        sessionId:
+          type: string
+        type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+      additionalProperties: false
+
+    OpenCodeLaunchResponse:
+      type: object
+      description: Result of a launched OpenCode coding run.
+      required: [profileName, bindingName, sessionId, promptResult, updates]
+      properties:
+        profileName:
+          type: string
+        bindingName:
+          type: string
+        sessionId:
+          type: string
+        promptResult:
+          type: object
+          additionalProperties: true
+        updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpenCodeLaunchUpdate'
       additionalProperties: false
 
     ProblemDetails:
