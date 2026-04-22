@@ -92,6 +92,26 @@ func newAgentProfilesService(deps RuntimeDeps) (agent.AgentProfilesService, erro
 	return svc, nil
 }
 
+func newOpenCodeBindingService(deps RuntimeDeps) (agent.OpenCodeBindingService, error) { //nolint:ireturn
+	if deps.AgentRuntimeStorageType == storageTypeDatabase {
+		svc, err := agent.NewDatabaseOpenCodeBindingService(
+			deps.AgentRuntimeDatabaseDSN,
+			deps.RootLogger,
+			deps.AgentRuntimeDatabaseTablePrefix,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create database opencode binding service: %w", err)
+		}
+		return svc, nil
+	}
+
+	svc, err := agent.NewFileOpenCodeBindingService(deps.DataDir, deps.RootLogger)
+	if err != nil {
+		return nil, fmt.Errorf("create opencode binding service: %w", err)
+	}
+	return svc, nil
+}
+
 func registerRuntime(container *dig.Container) error {
 	return di.ProvideAll(
 		container,
@@ -132,6 +152,14 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 	agentProfilesSvc, err := newAgentProfilesService(deps)
 	if err != nil {
 		return nil, err
+	}
+	openCodeBindingSvc, err := newOpenCodeBindingService(deps)
+	if err != nil {
+		return nil, err
+	}
+	openCodeLauncher, err := agent.NewOpenCodeLauncher(agentProfilesSvc, openCodeBindingSvc)
+	if err != nil {
+		return nil, fmt.Errorf("create opencode launcher: %w", err)
 	}
 
 	storageOpt := agent.WithFileSystemStorage(deps.DataDir)
@@ -176,12 +204,17 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 		if err = agentProfilesSvc.AutoMigrate(); err != nil {
 			return nil, fmt.Errorf("auto migrate agent profiles database: %w", err)
 		}
+		if err = openCodeBindingSvc.AutoMigrate(); err != nil {
+			return nil, fmt.Errorf("auto migrate opencode bindings database: %w", err)
+		}
 	}
 
 	httpHandler, err := httpapi.NewHandler(httpapi.HandlerArgs{
 		Runner:                 runner,
 		ProvidersConfigService: providersSvc,
 		AgentProfilesService:   agentProfilesSvc,
+		OpenCodeBindingService: openCodeBindingSvc,
+		OpenCodeLauncher:       openCodeLauncher,
 		ModelsLister:           runner.ModelsLocator(),
 	}, httpapi.WithLogger(deps.RootLogger))
 	if err != nil {
