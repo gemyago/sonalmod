@@ -22,6 +22,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 
 **Current focus:** Phase 4 (Run Visibility And Control)
 
+**Session continuity:** Phase 3 was paused and handed off in `.planning/HANDOFF.json` and `.planning/phases/03-opencode-coding-lane/.continue-here.md` on 2026-04-22T20:50:05Z. Resume with `$gsd-resume-work` and continue from Phase 4.
+
 ## Notes
 
 - The repo already contains a working agent runtime, session API, provider config, skills support, and workspace tools.
@@ -46,3 +48,4 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 ## Last Session
 
 - Completed 03-03-PLAN.md
+- Created pause handoff for the end of Phase 3 before moving into Phase 4
