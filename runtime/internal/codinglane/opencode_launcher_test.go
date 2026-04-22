@@ -141,8 +141,127 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		})
 		require.Error(t, launchErr)
 		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindLaunchFailed)
-		assert.ErrorContains(t, launchErr, binding.Name)
-		assert.ErrorContains(t, launchErr, profile.Name)
+		require.ErrorContains(t, launchErr, binding.Name)
+		require.ErrorContains(t, launchErr, profile.Name)
+	})
+
+	t.Run("constructor validates required dependencies", func(t *testing.T) {
+		_, err := NewOpenCodeACPLauncher(nil, &fakeBindingsService{}, &fakeOpenCodeACPClient{})
+		require.Error(t, err)
+
+		_, err = NewOpenCodeACPLauncher(&fakeProfilesService{}, nil, &fakeOpenCodeACPClient{})
+		require.Error(t, err)
+
+		_, err = NewOpenCodeACPLauncher(&fakeProfilesService{}, &fakeBindingsService{}, nil)
+		require.Error(t, err)
+	})
+
+	t.Run("validation errors are returned for missing selector data", func(t *testing.T) {
+		launcher, err := NewOpenCodeACPLauncher(
+			&fakeProfilesService{},
+			&fakeBindingsService{},
+			&fakeOpenCodeACPClient{},
+		)
+		require.NoError(t, err)
+
+		_, launchErr := launcher.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: " ",
+			Prompt:      "run",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindValidation)
+
+		_, launchErr = launcher.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: "profile-main",
+			Prompt:      " ",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindValidation)
+	})
+
+	t.Run("profile and binding resolution failures map deterministically", func(t *testing.T) {
+		profile := makeProfile("profile-main")
+		binding := makeBinding("binding-main", profile.Name)
+
+		launcherProfileLoadError, err := NewOpenCodeACPLauncher(
+			&fakeProfilesService{getErr: errors.New("database offline")},
+			&fakeBindingsService{},
+			&fakeOpenCodeACPClient{},
+		)
+		require.NoError(t, err)
+
+		_, launchErr := launcherProfileLoadError.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: profile.Name,
+			Prompt:      "run",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindLaunchFailed)
+
+		launcherBindingListError, err := NewOpenCodeACPLauncher(
+			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
+			&fakeBindingsService{listErr: errors.New("list failed")},
+			&fakeOpenCodeACPClient{},
+		)
+		require.NoError(t, err)
+
+		_, launchErr = launcherBindingListError.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: profile.Name,
+			Prompt:      "run",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindLaunchFailed)
+
+		launcherBindingGetError, err := NewOpenCodeACPLauncher(
+			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
+			&fakeBindingsService{
+				bindings: map[string]OpenCodeBinding{binding.Name: binding},
+				getErr:   errors.New("lookup failed"),
+			},
+			&fakeOpenCodeACPClient{},
+		)
+		require.NoError(t, err)
+
+		_, launchErr = launcherBindingGetError.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: profile.Name,
+			BindingName: binding.Name,
+			Prompt:      "run",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindLaunchFailed)
+	})
+
+	t.Run("binding mismatch and mapping failures return deterministic kinds", func(t *testing.T) {
+		profile := makeProfile("profile-main")
+		wrongBinding := makeBinding("binding-wrong", "other-profile")
+
+		launcherMismatch, err := NewOpenCodeACPLauncher(
+			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
+			&fakeBindingsService{bindings: map[string]OpenCodeBinding{wrongBinding.Name: wrongBinding}},
+			&fakeOpenCodeACPClient{},
+		)
+		require.NoError(t, err)
+
+		_, launchErr := launcherMismatch.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: profile.Name,
+			BindingName: wrongBinding.Name,
+			Prompt:      "run",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindNotFound)
+
+		launcherMappingError, err := NewOpenCodeACPLauncher(
+			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
+			&fakeBindingsService{bindings: map[string]OpenCodeBinding{wrongBinding.Name: wrongBinding}},
+			&fakeOpenCodeACPClient{},
+		)
+		require.NoError(t, err)
+
+		_, launchErr = launcherMappingError.Launch(t.Context(), OpenCodeLaunchRequest{
+			ProfileName: profile.Name,
+			Prompt:      "run",
+		})
+		require.Error(t, launchErr)
+		assertOpenCodeLaunchErrorKind(t, launchErr, OpenCodeLaunchErrorKindNotFound)
 	})
 }
 
@@ -192,11 +311,18 @@ func (f *fakeProfilesService) Get(_ context.Context, name string) (*agentprofile
 	return &profile, nil
 }
 
-func (f *fakeProfilesService) Create(context.Context, agentprofiles.CreateAgentProfileParams) (*agentprofiles.AgentProfile, error) {
+func (f *fakeProfilesService) Create(
+	context.Context,
+	agentprofiles.CreateAgentProfileParams,
+) (*agentprofiles.AgentProfile, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeProfilesService) Update(context.Context, string, agentprofiles.UpdateAgentProfileParams) (*agentprofiles.AgentProfile, error) {
+func (f *fakeProfilesService) Update(
+	context.Context,
+	string,
+	agentprofiles.UpdateAgentProfileParams,
+) (*agentprofiles.AgentProfile, error) {
 	return nil, errors.New("not implemented")
 }
 
@@ -236,11 +362,18 @@ func (f *fakeBindingsService) Get(_ context.Context, name string) (*OpenCodeBind
 	return &binding, nil
 }
 
-func (f *fakeBindingsService) Create(context.Context, CreateOpenCodeBindingParams) (*OpenCodeBinding, error) {
+func (f *fakeBindingsService) Create(
+	context.Context,
+	CreateOpenCodeBindingParams,
+) (*OpenCodeBinding, error) {
 	return nil, errors.New("not implemented")
 }
 
-func (f *fakeBindingsService) Update(context.Context, string, UpdateOpenCodeBindingParams) (*OpenCodeBinding, error) {
+func (f *fakeBindingsService) Update(
+	context.Context,
+	string,
+	UpdateOpenCodeBindingParams,
+) (*OpenCodeBinding, error) {
 	return nil, errors.New("not implemented")
 }
 

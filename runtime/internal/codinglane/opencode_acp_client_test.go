@@ -2,8 +2,12 @@ package codinglane
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,9 +95,34 @@ func TestOpenCodeACPClient(t *testing.T) {
 		require.Error(t, err)
 		assertOpenCodeACPErrorKind(t, err, OpenCodeACPErrorKindProtocol)
 	})
+
+	t.Run("validation and subprocess startup errors return typed kinds", func(t *testing.T) {
+		client := NewOpenCodeACPClient()
+
+		_, err := client.Launch(t.Context(), OpenCodeACPLaunchRequest{
+			AgentCommand: OpenCodeAgentCommand{},
+			Prompt:       "run",
+		})
+		require.Error(t, err)
+		assertOpenCodeACPErrorKind(t, err, OpenCodeACPErrorKindValidation)
+
+		_, err = client.Launch(t.Context(), OpenCodeACPLaunchRequest{
+			AgentCommand: OpenCodeAgentCommand{Command: os.Args[0], Args: []string{"-test.run=Nope"}},
+			Prompt:       " ",
+		})
+		require.Error(t, err)
+		assertOpenCodeACPErrorKind(t, err, OpenCodeACPErrorKindValidation)
+
+		_, err = client.Launch(t.Context(), OpenCodeACPLaunchRequest{
+			AgentCommand: OpenCodeAgentCommand{Command: "/no/such/opencode-binary"},
+			Prompt:       "run",
+		})
+		require.Error(t, err)
+		assertOpenCodeACPErrorKind(t, err, OpenCodeACPErrorKindSubprocess)
+	})
 }
 
-func TestOpenCodeACPClientHelperProcess(t *testing.T) {
+func TestOpenCodeACPClientHelperProcess(_ *testing.T) {
 	if os.Getenv("SONALMOD_ACP_HELPER_MODE") == "" {
 		return
 	}
@@ -111,7 +140,11 @@ func TestOpenCodeACPClientHelperProcess(t *testing.T) {
 
 		var req map[string]any
 		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			fmt.Fprintf(os.Stdout, "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"%s\"}}\n", err.Error())
+			fmt.Fprintf(
+				os.Stdout,
+				"{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"%s\"}}\n",
+				err.Error(),
+			)
 			continue
 		}
 
@@ -176,6 +209,154 @@ func assertOpenCodeACPErrorKind(t *testing.T, err error, kind OpenCodeACPErrorKi
 	assert.Equal(t, kind, acpErr.Kind)
 }
 
+func TestOpenCodeACPClientInternalHelpers(t *testing.T) {
+	t.Run("error wrapper and unwrapping behavior", func(t *testing.T) {
+		require.NoError(t, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "x", nil))
+
+		sourceErr := errors.New("source")
+		wrapped := wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", sourceErr)
+		require.Error(t, wrapped)
+
+		var acpErr *OpenCodeACPError
+		require.ErrorAs(t, wrapped, &acpErr)
+		assert.Equal(t, OpenCodeACPErrorKindProtocol, acpErr.Kind)
+		require.ErrorIs(t, wrapped, sourceErr)
+		assert.Contains(t, acpErr.Error(), "initialize")
+	})
+
+	t.Run("resolve request applies cwd and mcp defaults", func(t *testing.T) {
+		resolved, err := resolveOpenCodeACPLaunchRequest(OpenCodeACPLaunchRequest{
+			AgentCommand: OpenCodeAgentCommand{Command: "opencode", Args: []string{"acp"}},
+			Prompt:       "run tests",
+		})
+		require.NoError(t, err)
+		assert.NotEmpty(t, resolved.CWD)
+		assert.NotNil(t, resolved.MCPServers)
+		assert.Equal(t, "run tests", resolved.Prompt)
+	})
+
+	t.Run("wire write request error branches", func(t *testing.T) {
+		client := newOpenCodeACPWireClient(strings.NewReader(""), &bytes.Buffer{})
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		err := client.writeRequest(ctx, 1, "initialize", map[string]any{})
+		require.ErrorIs(t, err, context.Canceled)
+
+		err = client.writeRequest(t.Context(), 1, "initialize", map[string]any{"bad": func() {}})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "marshal initialize request")
+
+		client = newOpenCodeACPWireClient(strings.NewReader(""), &errorWriter{err: errors.New("write failed")})
+		err = client.writeRequest(t.Context(), 1, "initialize", map[string]any{})
+		require.Error(t, err)
+		assert.ErrorContains(t, err, "write initialize request")
+	})
+
+	t.Run("wire read envelope branches", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		client := newOpenCodeACPWireClient(strings.NewReader(""), &bytes.Buffer{})
+		_, err := client.readEnvelope(ctx)
+		require.ErrorIs(t, err, context.Canceled)
+
+		client = newOpenCodeACPWireClient(strings.NewReader(""), &bytes.Buffer{})
+		_, err = client.readEnvelope(t.Context())
+		require.Error(t, err)
+		require.ErrorContains(t, err, "EOF")
+
+		client = newOpenCodeACPWireClient(strings.NewReader("not-json\n"), &bytes.Buffer{})
+		_, err = client.readEnvelope(t.Context())
+		require.Error(t, err)
+		require.ErrorContains(t, err, "decode ACP message")
+
+		oversized := strings.Repeat("a", openCodeACPScannerMaxSize+1) + "\n"
+		client = newOpenCodeACPWireClient(strings.NewReader(oversized), &bytes.Buffer{})
+		_, err = client.readEnvelope(t.Context())
+		require.Error(t, err)
+		require.ErrorContains(t, err, "read ACP message")
+
+		client = newOpenCodeACPWireClient(
+			strings.NewReader("\n\n{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n"),
+			&bytes.Buffer{},
+		)
+		env, err := client.readEnvelope(t.Context())
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"ok":true}`, string(env.Result))
+	})
+
+	t.Run("call validates response ids and payloads", func(t *testing.T) {
+		reader := strings.NewReader(
+			"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"ok\":true}}\n",
+		)
+		client := newOpenCodeACPWireClient(reader, &bytes.Buffer{})
+		_, err := client.call(t.Context(), "initialize", map[string]any{}, nil)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "unexpected response id")
+
+		reader = strings.NewReader(
+			"{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1,\"message\":\"boom\"}}\n",
+		)
+		client = newOpenCodeACPWireClient(reader, &bytes.Buffer{})
+		_, err = client.call(t.Context(), "initialize", map[string]any{}, nil)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "ACP error response")
+
+		reader = strings.NewReader("{\"jsonrpc\":\"2.0\",\"id\":1}\n")
+		client = newOpenCodeACPWireClient(reader, &bytes.Buffer{})
+		_, err = client.call(t.Context(), "initialize", map[string]any{}, nil)
+		require.Error(t, err)
+		require.ErrorContains(t, err, "missing result payload")
+
+		reader = strings.NewReader(
+			"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s\",\"update\":{\"type\":\"progress\"}}}\n" +
+				"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n",
+		)
+		client = newOpenCodeACPWireClient(reader, &bytes.Buffer{})
+		notificationCount := 0
+		_, err = client.call(t.Context(), "initialize", map[string]any{}, func(_ openCodeACPEnvelope) error {
+			notificationCount++
+			return nil
+		})
+		require.NoError(t, err)
+		assert.Equal(t, 1, notificationCount)
+
+		reader = strings.NewReader(
+			"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"s\",\"update\":{\"type\":\"progress\"}}}\n",
+		)
+		client = newOpenCodeACPWireClient(reader, &bytes.Buffer{})
+		_, err = client.call(t.Context(), "initialize", map[string]any{}, func(_ openCodeACPEnvelope) error {
+			return errors.New("stop")
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "stop")
+	})
+
+	t.Run("json and update parsing helper branches", func(t *testing.T) {
+		assert.Equal(t, "3", normalizeOpenCodeRPCID(json.RawMessage(`3`)))
+		assert.Equal(t, "abc", normalizeOpenCodeRPCID(json.RawMessage(`"abc"`)))
+		assert.Equal(t, "{}", normalizeOpenCodeRPCID(json.RawMessage(`{}`)))
+
+		_, err := jsonRawObject(json.RawMessage(`\"x\"`), "payload")
+		require.Error(t, err)
+
+		_, err = extractOpenCodeSessionID(json.RawMessage(`{"ok":true}`))
+		require.Error(t, err)
+		_, err = extractOpenCodeSessionID(json.RawMessage(`"x"`))
+		require.Error(t, err)
+
+		_, err = parseOpenCodeSessionUpdate(json.RawMessage(`{"update":{"type":"progress"}}`))
+		require.Error(t, err)
+		_, err = parseOpenCodeSessionUpdate(json.RawMessage(`{"sessionId":"s"}`))
+		require.Error(t, err)
+		_, err = parseOpenCodeSessionUpdate(json.RawMessage(`{"sessionId":"s","update":{"x":"y"}}`))
+		require.Error(t, err)
+
+		_, err = jsonRawObject(json.RawMessage(`null`), "payload")
+		require.Error(t, err)
+	})
+}
+
 func writeResult(id any, result any) {
 	resp := map[string]any{
 		"jsonrpc": "2.0",
@@ -208,3 +389,13 @@ func writeNotification(method string, params any) {
 	raw, _ := json.Marshal(resp)
 	_, _ = os.Stdout.Write(append(raw, '\n'))
 }
+
+type errorWriter struct {
+	err error
+}
+
+func (w *errorWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
+
+var _ io.Writer = (*errorWriter)(nil)

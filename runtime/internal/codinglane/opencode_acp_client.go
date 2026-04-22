@@ -18,6 +18,9 @@ import (
 const (
 	openCodeACPProtocolVersion  = 1
 	openCodeACPProcessWaitLimit = 2 * time.Second
+	openCodeACPUpdateBufferSize = 4
+	openCodeACPScannerBufSize   = 64 * 1024
+	openCodeACPScannerMaxSize   = 4 * 1024 * 1024
 )
 
 // OpenCodeACPErrorKind classifies ACP launch failure categories.
@@ -81,10 +84,33 @@ func wrapOpenCodeACPError(kind OpenCodeACPErrorKind, op string, err error) error
 	if err == nil {
 		return nil
 	}
-	return &OpenCodeACPError{
-		Kind: kind,
-		Op:   op,
-		Err:  err,
+	return &OpenCodeACPError{Kind: kind, Op: op, Err: err}
+}
+
+type openCodeACPResolvedLaunchRequest struct {
+	Command    OpenCodeAgentCommand
+	CWD        string
+	Prompt     string
+	MCPServers []any
+}
+
+type openCodeACPSubprocess struct {
+	stdin io.WriteCloser
+	cmd   *exec.Cmd
+	out   io.Reader
+}
+
+func (p *openCodeACPSubprocess) close() {
+	_ = p.stdin.Close()
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- p.cmd.Wait()
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(openCodeACPProcessWaitLimit):
+		_ = p.cmd.Process.Kill()
+		<-waitDone
 	}
 }
 
@@ -92,13 +118,35 @@ func (c *OpenCodeACPClient) Launch(
 	ctx context.Context,
 	request OpenCodeACPLaunchRequest,
 ) (*OpenCodeACPLaunchResult, error) {
-	normalizedCommand, err := normalizeAgentCommand(request.AgentCommand)
+	resolved, err := resolveOpenCodeACPLaunchRequest(request)
 	if err != nil {
-		return nil, wrapOpenCodeACPError(OpenCodeACPErrorKindValidation, "validate-agent-command", err)
+		return nil, err
 	}
+
+	process, err := startOpenCodeACPSubprocess(ctx, resolved)
+	if err != nil {
+		return nil, err
+	}
+	defer process.close()
+
+	return executeOpenCodeACPProtocol(ctx, process, resolved)
+}
+
+func resolveOpenCodeACPLaunchRequest(
+	request OpenCodeACPLaunchRequest,
+) (openCodeACPResolvedLaunchRequest, error) {
+	command, err := normalizeAgentCommand(request.AgentCommand)
+	if err != nil {
+		return openCodeACPResolvedLaunchRequest{}, wrapOpenCodeACPError(
+			OpenCodeACPErrorKindValidation,
+			"validate-agent-command",
+			err,
+		)
+	}
+
 	prompt := strings.TrimSpace(request.Prompt)
 	if prompt == "" {
-		return nil, wrapOpenCodeACPError(
+		return openCodeACPResolvedLaunchRequest{}, wrapOpenCodeACPError(
 			OpenCodeACPErrorKindValidation,
 			"validate-prompt",
 			errors.New("prompt is required"),
@@ -109,7 +157,7 @@ func (c *OpenCodeACPClient) Launch(
 	if cwd == "" {
 		cwd, err = os.Getwd()
 		if err != nil {
-			return nil, wrapOpenCodeACPError(
+			return openCodeACPResolvedLaunchRequest{}, wrapOpenCodeACPError(
 				OpenCodeACPErrorKindSubprocess,
 				"resolve-working-directory",
 				fmt.Errorf("determine working directory: %w", err),
@@ -122,8 +170,21 @@ func (c *OpenCodeACPClient) Launch(
 		mcpServers = []any{}
 	}
 
-	cmd := exec.CommandContext(ctx, normalizedCommand.Command, normalizedCommand.Args...)
-	cmd.Dir = cwd
+	return openCodeACPResolvedLaunchRequest{
+		Command:    command,
+		CWD:        cwd,
+		Prompt:     prompt,
+		MCPServers: mcpServers,
+	}, nil
+}
+
+func startOpenCodeACPSubprocess(
+	ctx context.Context,
+	request openCodeACPResolvedLaunchRequest,
+) (*openCodeACPSubprocess, error) {
+	// #nosec G204 -- command/args are validated persisted defaults from trusted runtime config.
+	cmd := exec.CommandContext(ctx, request.Command.Command, request.Command.Args...)
+	cmd.Dir = request.CWD
 	cmd.Stderr = os.Stderr
 
 	stdin, err := cmd.StdinPipe()
@@ -134,6 +195,7 @@ func (c *OpenCodeACPClient) Launch(
 			fmt.Errorf("open ACP stdin: %w", err),
 		)
 	}
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, wrapOpenCodeACPError(
@@ -142,6 +204,7 @@ func (c *OpenCodeACPClient) Launch(
 			fmt.Errorf("open ACP stdout: %w", err),
 		)
 	}
+
 	if err = cmd.Start(); err != nil {
 		return nil, wrapOpenCodeACPError(
 			OpenCodeACPErrorKindSubprocess,
@@ -150,57 +213,91 @@ func (c *OpenCodeACPClient) Launch(
 		)
 	}
 
-	defer func() {
-		_ = stdin.Close()
-		waitDone := make(chan error, 1)
-		go func() {
-			waitDone <- cmd.Wait()
-		}()
-		select {
-		case <-waitDone:
-		case <-time.After(openCodeACPProcessWaitLimit):
-			_ = cmd.Process.Kill()
-			<-waitDone
-		}
-	}()
+	return &openCodeACPSubprocess{stdin: stdin, out: stdout, cmd: cmd}, nil
+}
 
-	client := newOpenCodeACPWireClient(stdout, stdin)
+func executeOpenCodeACPProtocol(
+	ctx context.Context,
+	process *openCodeACPSubprocess,
+	request openCodeACPResolvedLaunchRequest,
+) (*OpenCodeACPLaunchResult, error) {
+	client := newOpenCodeACPWireClient(process.out, process.stdin)
 
+	if err := initializeOpenCodeACP(ctx, client); err != nil {
+		return nil, err
+	}
+
+	sessionID, err := createOpenCodeSession(ctx, client, request)
+	if err != nil {
+		return nil, err
+	}
+
+	promptResult, updates, err := promptOpenCodeSession(ctx, client, sessionID, request.Prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	return &OpenCodeACPLaunchResult{
+		SessionID:    sessionID,
+		PromptResult: promptResult,
+		Updates:      updates,
+	}, nil
+}
+
+func initializeOpenCodeACP(ctx context.Context, client *openCodeACPWireClient) error {
 	initializeResp, err := client.call(ctx, "initialize", map[string]any{
 		"protocolVersion": openCodeACPProtocolVersion,
 	}, nil)
 	if err != nil {
-		return nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", err)
-	}
-	if _, err = jsonRawObject(initializeResp.Result, "initialize result"); err != nil {
-		return nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", err)
+		return wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", err)
 	}
 
+	if _, err = jsonRawObject(initializeResp.Result, "initialize result"); err != nil {
+		return wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", err)
+	}
+
+	return nil
+}
+
+func createOpenCodeSession(
+	ctx context.Context,
+	client *openCodeACPWireClient,
+	request openCodeACPResolvedLaunchRequest,
+) (string, error) {
 	newSessionResp, err := client.call(ctx, "session/new", map[string]any{
-		"cwd":        cwd,
-		"mcpServers": mcpServers,
+		"cwd":        request.CWD,
+		"mcpServers": request.MCPServers,
 	}, nil)
 	if err != nil {
-		return nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/new", err)
-	}
-	sessionID, err := extractOpenCodeSessionID(newSessionResp.Result)
-	if err != nil {
-		return nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/new", err)
+		return "", wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/new", err)
 	}
 
-	updates := make([]OpenCodeACPUpdate, 0, 4)
+	sessionID, err := extractOpenCodeSessionID(newSessionResp.Result)
+	if err != nil {
+		return "", wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/new", err)
+	}
+
+	return sessionID, nil
+}
+
+func promptOpenCodeSession(
+	ctx context.Context,
+	client *openCodeACPWireClient,
+	sessionID string,
+	prompt string,
+) (json.RawMessage, []OpenCodeACPUpdate, error) {
+	updates := make([]OpenCodeACPUpdate, 0, openCodeACPUpdateBufferSize)
 	promptResp, err := client.call(ctx, "session/prompt", map[string]any{
 		"sessionId": sessionID,
-		"prompt": []map[string]string{
-			{
-				"type": "text",
-				"text": prompt,
-			},
-		},
+		"prompt": []map[string]string{{
+			"type": "text",
+			"text": prompt,
+		}},
 	}, func(env openCodeACPEnvelope) error {
 		if env.Method != "session/update" {
 			return nil
 		}
+
 		update, parseErr := parseOpenCodeSessionUpdate(env.Params)
 		if parseErr != nil {
 			return parseErr
@@ -209,14 +306,10 @@ func (c *OpenCodeACPClient) Launch(
 		return nil
 	})
 	if err != nil {
-		return nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/prompt", err)
+		return nil, nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/prompt", err)
 	}
 
-	return &OpenCodeACPLaunchResult{
-		SessionID:    sessionID,
-		PromptResult: promptResp.Result,
-		Updates:      updates,
-	}, nil
+	return promptResp.Result, updates, nil
 }
 
 type openCodeACPWireClient struct {
@@ -227,7 +320,7 @@ type openCodeACPWireClient struct {
 
 func newOpenCodeACPWireClient(reader io.Reader, writer io.Writer) *openCodeACPWireClient {
 	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	scanner.Buffer(make([]byte, 0, openCodeACPScannerBufSize), openCodeACPScannerMaxSize)
 	return &openCodeACPWireClient{
 		scanner: scanner,
 		writer:  writer,
@@ -236,11 +329,11 @@ func newOpenCodeACPWireClient(reader io.Reader, writer io.Writer) *openCodeACPWi
 }
 
 type openCodeACPEnvelope struct {
-	ID     json.RawMessage `json:"id"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
-	Result json.RawMessage `json:"result"`
-	Error  *openCodeACPAPIError
+	ID     json.RawMessage      `json:"id"`
+	Method string               `json:"method"`
+	Params json.RawMessage      `json:"params"`
+	Result json.RawMessage      `json:"result"`
+	Error  *openCodeACPAPIError `json:"error"`
 }
 
 type openCodeACPAPIError struct {
@@ -360,10 +453,12 @@ func normalizeOpenCodeRPCID(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &asInt); err == nil {
 		return strconv.FormatInt(asInt, 10)
 	}
+
 	var asString string
 	if err := json.Unmarshal(raw, &asString); err == nil {
 		return asString
 	}
+
 	return string(raw)
 }
 
@@ -372,6 +467,7 @@ func extractOpenCodeSessionID(result json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	sessionID, _ := obj["sessionId"].(string)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

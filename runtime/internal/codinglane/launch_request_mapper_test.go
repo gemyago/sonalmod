@@ -55,4 +55,32 @@ func TestOpenCodeLaunchRequestMapper(t *testing.T) {
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "prompt is required")
 	})
+
+	t.Run("returns validation error for missing profile and binding names", func(t *testing.T) {
+		invalidProfile := profile
+		invalidProfile.Name = ""
+		_, err := MapOpenCodeLaunchRequest(invalidProfile, binding, OpenCodeLaunchRequest{
+			Prompt: "run",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "profile name is required")
+
+		invalidBinding := binding
+		invalidBinding.Name = ""
+		_, err = MapOpenCodeLaunchRequest(profile, invalidBinding, OpenCodeLaunchRequest{
+			Prompt: "run",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "binding name is required")
+	})
+
+	t.Run("returns validation error when binding references another profile", func(t *testing.T) {
+		invalidBinding := binding
+		invalidBinding.ProfileName = "other-profile"
+		_, err := MapOpenCodeLaunchRequest(profile, invalidBinding, OpenCodeLaunchRequest{
+			Prompt: "run",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "references profile")
+	})
 }
