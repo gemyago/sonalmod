@@ -103,4 +103,96 @@ func TestAgentProfilesDomainValidation(t *testing.T) {
 		assert.Equal(t, []string{"tool.write", "tool.read"}, updated.ToolRefs)
 		assert.Equal(t, "provider/model-b", updated.ExecutionSettings.DefaultModel)
 	})
+
+	t.Run("normalizeCreateParams validates required fields", func(t *testing.T) {
+		t.Run("rejects empty role", func(t *testing.T) {
+			params := makeCreateParams()
+			params.Role = "  "
+			_, err := normalizeCreateParams(params)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "role is required")
+		})
+
+		t.Run("rejects empty instructions", func(t *testing.T) {
+			params := makeCreateParams()
+			params.Instructions = "  "
+			_, err := normalizeCreateParams(params)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "instructions are required")
+		})
+
+		t.Run("rejects empty default model", func(t *testing.T) {
+			params := makeCreateParams()
+			params.ExecutionSettings.DefaultModel = " "
+			_, err := normalizeCreateParams(params)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.default_model")
+		})
+	})
+
+	t.Run("applyProfileUpdate validates required fields", func(t *testing.T) {
+		existing := AgentProfile{
+			Name:         "profile-main",
+			DisplayName:  "Old Name",
+			Role:         "assistant",
+			Instructions: "original instructions",
+			ToolRefs:     []string{"tool.read"},
+			ExecutionSettings: ExecutionSettings{
+				DefaultModel: "provider/model-a",
+			},
+		}
+
+		t.Run("rejects empty role", func(t *testing.T) {
+			_, err := applyProfileUpdate(existing, UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         " ",
+				Instructions: "ok",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: "provider/model",
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "role is required")
+		})
+
+		t.Run("rejects empty instructions", func(t *testing.T) {
+			_, err := applyProfileUpdate(existing, UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         "assistant",
+				Instructions: " ",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: "provider/model",
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "instructions are required")
+		})
+
+		t.Run("rejects empty default model", func(t *testing.T) {
+			_, err := applyProfileUpdate(existing, UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         "assistant",
+				Instructions: "ok",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: " ",
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.default_model")
+		})
+
+		t.Run("rejects empty tool refs", func(t *testing.T) {
+			_, err := applyProfileUpdate(existing, UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         "assistant",
+				Instructions: "ok",
+				ToolRefs:     []string{"tool.read", " "},
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: "provider/model",
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "tool_refs")
+		})
+	})
 }

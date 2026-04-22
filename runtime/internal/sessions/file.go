@@ -342,14 +342,14 @@ func (s *fileSession) UserID() string {
 	return s.userID
 }
 
-func (s *fileSession) State() session.State { //nolint:ireturn // genkit session.State contract
+func (s *fileSession) State() session.State {
 	return &fileSessionState{
 		mu:    &s.mu,
 		state: s.state,
 	}
 }
 
-func (s *fileSession) Events() session.Events { //nolint:ireturn // genkit session.Events contract
+func (s *fileSession) Events() session.Events {
 	return fileSessionEvents(s.events)
 }
 
@@ -703,7 +703,7 @@ func (s *FileSessionService) listSessionsInDir(appName, userID, dir string) ([]s
 	return sessions, nil
 }
 
-func (s *FileSessionService) loadSessionMetadata( //nolint:ireturn // ADK session.Session
+func (s *FileSessionService) loadSessionMetadata(
 	appName, userID, sessionID string,
 ) (session.Session, error) {
 	path := sessionPath(s.baseDir, appName, userID, sessionID)

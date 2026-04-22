@@ -7,15 +7,12 @@ import (
 
 	"github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAgentProfilesAliases(t *testing.T) {
-	assert.ErrorIs(t, ErrAgentProfileNotFound, ap.ErrAgentProfileNotFound)
-	assert.ErrorIs(t, ErrAgentProfileNameConflict, ap.ErrAgentProfileNameConflict)
-
-	var _ AgentProfilesService = (ap.AgentProfilesService)(nil)
+	require.ErrorIs(t, ErrAgentProfileNotFound, ap.ErrAgentProfileNotFound)
+	require.ErrorIs(t, ErrAgentProfileNameConflict, ap.ErrAgentProfileNameConflict)
 }
 
 func TestNewFileAgentProfilesService(t *testing.T) {

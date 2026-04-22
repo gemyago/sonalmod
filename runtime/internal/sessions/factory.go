@@ -49,7 +49,7 @@ func NewSessionsStorage(
 
 // newRawSessionsStorage selects the concrete [SessionsStorage] implementation from configuration.
 // It returns the interface because the backend type is chosen at runtime (file, database, or memory).
-func newRawSessionsStorage( //nolint:ireturn // polymorphic factory; multiple concrete backends
+func newRawSessionsStorage(
 	deps SessionServiceFactoryDeps,
 ) (
 	SessionsStorage,

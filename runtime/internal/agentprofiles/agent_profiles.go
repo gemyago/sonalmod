@@ -71,6 +71,8 @@ type UpdateAgentProfileParams struct {
 }
 
 // AgentProfilesService manages persisted agent profiles.
+//
+//nolint:revive // service name is intentionally explicit and mirrored in public aliases.
 type AgentProfilesService interface {
 	// List returns all profiles sorted by CreatedAt ascending.
 	List(ctx context.Context) ([]AgentProfile, error)

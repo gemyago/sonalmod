@@ -21,8 +21,6 @@ func isSQLiteDSN(dsn string) bool {
 // NewGormDialector returns the appropriate GORM dialector for the given DSN.
 // SQLite DSNs (":memory:", "file:...", etc.) use the pure-Go SQLite driver.
 // All other DSNs are treated as PostgreSQL.
-//
-//nolint:ireturn // Has to return the interface since third party returns it
 func NewGormDialector(dsn string) gorm.Dialector {
 	if isSQLiteDSN(dsn) {
 		return sqlite.Open(dsn)

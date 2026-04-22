@@ -160,11 +160,11 @@ func TestDatabaseAgentProfilesService(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrAgentProfileNotFound)
+		require.ErrorIs(t, err, ErrAgentProfileNotFound)
 
 		err = svc.Delete(ctx, "missing-profile")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrAgentProfileNotFound)
+		require.ErrorIs(t, err, ErrAgentProfileNotFound)
 	})
 
 	t.Run("restart-shaped reload works with shared sqlite memory dsn", func(t *testing.T) {
@@ -187,5 +187,65 @@ func TestDatabaseAgentProfilesService(t *testing.T) {
 		assert.Equal(t, created.ExecutionSettings, loaded.ExecutionSettings)
 		assert.Equal(t, created.CreatedAt.UnixNano(), loaded.CreatedAt.UnixNano())
 		assert.Equal(t, created.UpdatedAt.UnixNano(), loaded.UpdatedAt.UnixNano())
+	})
+
+	t.Run("validation and database error paths", func(t *testing.T) {
+		t.Run("Create returns validation errors", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+			_, err := svc.Create(t.Context(), CreateAgentProfileParams{
+				Name:         "profile-1",
+				Role:         " ",
+				Instructions: "ok",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: "provider/model",
+				},
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("Update returns validation errors", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+			created, err := svc.Create(t.Context(), makeCreateParams())
+			require.NoError(t, err)
+
+			_, err = svc.Update(t.Context(), created.Name, UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         "assistant",
+				Instructions: "ok",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: " ",
+				},
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("closed db returns operation errors", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+			sqlDB, err := svc.db.DB()
+			require.NoError(t, err)
+			require.NoError(t, sqlDB.Close())
+
+			_, err = svc.List(t.Context())
+			require.Error(t, err)
+
+			_, err = svc.Get(t.Context(), "any")
+			require.Error(t, err)
+
+			_, err = svc.Create(t.Context(), makeCreateParams())
+			require.Error(t, err)
+
+			_, err = svc.Update(t.Context(), "any", UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         "assistant",
+				Instructions: "ok",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: "provider/model",
+				},
+			})
+			require.Error(t, err)
+
+			err = svc.Delete(t.Context(), "any")
+			require.Error(t, err)
+		})
 	})
 }

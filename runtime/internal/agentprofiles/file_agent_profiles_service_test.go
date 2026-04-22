@@ -3,6 +3,7 @@ package agentprofiles
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -139,11 +140,11 @@ func TestFileAgentProfilesService(t *testing.T) {
 			},
 		})
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrAgentProfileNotFound)
+		require.ErrorIs(t, err, ErrAgentProfileNotFound)
 
 		err = svc.Delete(ctx, "missing-profile")
 		require.Error(t, err)
-		assert.ErrorIs(t, err, ErrAgentProfileNotFound)
+		require.ErrorIs(t, err, ErrAgentProfileNotFound)
 	})
 
 	t.Run("AutoMigrate is no-op", func(t *testing.T) {
@@ -164,5 +165,107 @@ func TestFileAgentProfilesService(t *testing.T) {
 		loaded, err := svc2.Get(ctx, created.Name)
 		require.NoError(t, err)
 		assert.Equal(t, *created, *loaded)
+	})
+
+	t.Run("error paths", func(t *testing.T) {
+		t.Run("NewFileAgentProfilesService rejects empty base dir", func(t *testing.T) {
+			_, err := NewFileAgentProfilesService("", testLogger(t))
+			require.Error(t, err)
+		})
+
+		t.Run("List returns error on unreadable directory", func(t *testing.T) {
+			if runtime.GOOS == "windows" {
+				t.Skip("chmod permissions differ on Windows")
+			}
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+			profilesDir := filepath.Join(baseDir, "agent-profiles")
+			require.NoError(t, os.Chmod(profilesDir, 0000))
+			t.Cleanup(func() { _ = os.Chmod(profilesDir, 0750) })
+
+			_, err := svc.List(t.Context())
+			require.Error(t, err)
+		})
+
+		t.Run("List returns empty when profiles dir is missing", func(t *testing.T) {
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+			profilesDir := filepath.Join(baseDir, "agent-profiles")
+			require.NoError(t, os.RemoveAll(profilesDir))
+
+			listed, err := svc.List(t.Context())
+			require.NoError(t, err)
+			assert.Empty(t, listed)
+		})
+
+		t.Run("List returns error on corrupt yaml", func(t *testing.T) {
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+			path := filepath.Join(baseDir, "agent-profiles", "bad.yaml")
+			require.NoError(t, os.WriteFile(path, []byte("{bad: yaml: [[["), 0600))
+
+			_, err := svc.List(t.Context())
+			require.Error(t, err)
+		})
+
+		t.Run("Get returns parse error on corrupt yaml", func(t *testing.T) {
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+			path := filepath.Join(baseDir, "agent-profiles", "bad.yaml")
+			require.NoError(t, os.WriteFile(path, []byte("{bad: yaml: [[["), 0600))
+
+			_, err := svc.Get(t.Context(), "bad")
+			require.Error(t, err)
+		})
+
+		t.Run("Create returns validation error for invalid payload", func(t *testing.T) {
+			svc := makeService(t, t.TempDir())
+			_, err := svc.Create(t.Context(), CreateAgentProfileParams{
+				Name:         "invalid",
+				Role:         "assistant",
+				Instructions: "ok",
+				ToolRefs:     []string{" "},
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: "provider/model",
+				},
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("Update returns validation error for invalid payload", func(t *testing.T) {
+			svc := makeService(t, t.TempDir())
+			created, err := svc.Create(t.Context(), makeCreateParams())
+			require.NoError(t, err)
+
+			_, err = svc.Update(t.Context(), created.Name, UpdateAgentProfileParams{
+				DisplayName:  "x",
+				Role:         "assistant",
+				Instructions: "ok",
+				ExecutionSettings: ExecutionSettings{
+					DefaultModel: " ",
+				},
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("Delete returns remove error when path is a directory", func(t *testing.T) {
+			if runtime.GOOS == "windows" {
+				t.Skip("chmod permissions differ on Windows")
+			}
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+			ctx := t.Context()
+			created, err := svc.Create(ctx, makeCreateParams())
+			require.NoError(t, err)
+
+			path := filepath.Join(baseDir, "agent-profiles", created.Name+".yaml")
+			require.NoError(t, os.Remove(path))
+			require.NoError(t, os.Mkdir(path, 0750))
+			require.NoError(t, os.WriteFile(filepath.Join(path, "child"), []byte("x"), 0600))
+			t.Cleanup(func() { _ = os.RemoveAll(path) })
+
+			err = svc.Delete(ctx, created.Name)
+			require.Error(t, err)
+		})
 	})
 }

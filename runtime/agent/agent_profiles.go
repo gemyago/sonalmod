@@ -16,6 +16,8 @@ var ErrAgentProfileNameConflict = ap.ErrAgentProfileNameConflict
 type ExecutionSettings = ap.ExecutionSettings
 
 // AgentProfile is a persisted general-purpose agent profile definition.
+//
+//nolint:revive // public naming intentionally matches existing runtime contract style.
 type AgentProfile = ap.AgentProfile
 
 // CreateAgentProfileParams contains parameters required to create a profile.
@@ -25,6 +27,8 @@ type CreateAgentProfileParams = ap.CreateAgentProfileParams
 type UpdateAgentProfileParams = ap.UpdateAgentProfileParams
 
 // AgentProfilesService manages persisted agent profiles.
+//
+//nolint:revive // public naming intentionally matches existing runtime contract style.
 type AgentProfilesService = ap.AgentProfilesService
 
 // NewFileAgentProfilesService creates a file-based [AgentProfilesService] that stores
