@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-04-22T20:16:55.437Z"
+last_updated: "2026-04-22T20:55:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 7
-  percent: 88
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -20,7 +20,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 
 **Core value:** One person can define, launch, and evolve multiple kinds of agents from the same harness, including a coding agent backed by OpenCode, without rewriting the orchestration layer each time or guessing what the first external protocol actually supports.
 
-**Current focus:** Phase --phase — 03
+**Current focus:** Phase 4 (Run Visibility And Control)
 
 ## Notes
 
@@ -30,8 +30,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 - ACP discovery now has a validated subset documented in `docs/implementation/opencode-acp-capability-map.md`.
 - Working terminology is still provisional.
 
-**Completed Phase:** 2 (Agent Profile Foundation) — 3/3 plans complete — 2026-04-22
-**Next Phase:** 3 (OpenCode Coding Lane), building on the validated ACP subset and profile foundation.
+**Completed Phase:** 3 (OpenCode Coding Lane) — 3/3 plans complete — 2026-04-22
+**Next Phase:** 4 (Run Visibility And Control), focused on run observability and interruption controls.
 
 ## Decisions
 
@@ -39,7 +39,10 @@ See: `.planning/PROJECT.md` (updated 2026-04-22)
 - OpenCode binding persistence supports both YAML files and SQL with restart-safe reuse.
 - Launch path is constrained to initialize/session-new/session-prompt plus session/update handling only.
 - Launcher resolves saved profile+binding first and emits typed launch error kinds for API mapping.
+- Expose OpenCode binding CRUD and launch endpoints with deterministic problem-details mapping.
+- Require OpenCode binding and launcher dependencies in runtime HTTP handler constructor.
+- Keep launch requests selector-based (profileName/bindingName/prompt) with no full config payload re-entry.
 
 ## Last Session
 
-- Completed 03-02-PLAN.md
+- Completed 03-03-PLAN.md

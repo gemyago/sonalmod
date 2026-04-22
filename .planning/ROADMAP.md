@@ -48,7 +48,7 @@
 Plans:
 - [x] 03-01-PLAN.md - Add OpenCode binding contracts and persistence separate from general profiles (completed 2026-04-22)
 - [x] 03-02-PLAN.md - Implement validated-subset OpenCode ACP launch service (completed 2026-04-22)
-- [ ] 03-03-PLAN.md - Expose binding and launch APIs and wire app runtime dependencies
+- [x] 03-03-PLAN.md - Expose binding and launch APIs and wire app runtime dependencies (completed 2026-04-22)
 
 **Requirements covered:**
 - CODE-02
@@ -88,9 +88,9 @@ Plans:
 | AGNT-03 | Phase 2 | Completed (Phase 2 Plan 02-03 complete 2026-04-22) |
 | PERS-01 | Phase 2 | Completed (Phase 2 Plan 02-03 complete 2026-04-22) |
 | PERS-02 | Phase 2 | Completed (Phase 2 Plan 02-02 complete 2026-04-22) |
-| CODE-02 | Phase 3 | Completed (Phase 3 Plan 03-01 complete 2026-04-22) |
-| CODE-03 | Phase 3 | Completed (Phase 3 Plan 03-02 complete 2026-04-22) |
-| CODE-04 | Phase 3 | Completed (Phase 3 Plan 03-01 complete 2026-04-22) |
+| CODE-02 | Phase 3 | Completed (Phase 3 Plan 03-03 complete 2026-04-22) |
+| CODE-03 | Phase 3 | Completed (Phase 3 Plan 03-03 complete 2026-04-22) |
+| CODE-04 | Phase 3 | Completed (Phase 3 Plan 03-03 complete 2026-04-22) |
 | EXEC-01 | Phase 4 | Pending |
 | EXEC-02 | Phase 4 | Pending |
 | EXEC-03 | Phase 4 | Pending |
@@ -99,4 +99,4 @@ Plans:
 
 ## Current Focus
 
-Phase 3 is next; Phase 2 is complete with Plans 02-01, 02-02, and 02-03 shipped.
+Phase 4 is next; Phase 3 is complete with Plans 03-01, 03-02, and 03-03 shipped.
