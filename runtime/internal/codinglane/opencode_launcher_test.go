@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -91,7 +92,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		profile := makeProfile("profile-main")
 
 		launcherMissingProfile, err := NewOpenCodeACPLauncher(&fakeProfilesService{
-			getErr: errors.New("wrapper: " + agentprofiles.ErrAgentProfileNotFound.Error()),
+			getErr: fmt.Errorf("wrapper: %w", agentprofiles.ErrAgentProfileNotFound),
 		}, &fakeBindingsService{}, &fakeOpenCodeACPClient{})
 		require.NoError(t, err)
 
