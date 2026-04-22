@@ -118,4 +118,90 @@ func TestDatabaseOpenCodeBindingService(t *testing.T) {
 		assert.Equal(t, created.CreatedAt.UnixNano(), loaded.CreatedAt.UnixNano())
 		assert.Equal(t, created.UpdatedAt.UnixNano(), loaded.UpdatedAt.UnixNano())
 	})
+
+	t.Run("constructor and error paths", func(t *testing.T) {
+		t.Run("creates service with sqlite memory dsn", func(t *testing.T) {
+			svc, err := NewDatabaseOpenCodeBindingService(":memory:", nil, "")
+			require.NoError(t, err)
+			require.NotNil(t, svc)
+		})
+
+		t.Run("fails with invalid postgres dsn", func(t *testing.T) {
+			svc, err := NewDatabaseOpenCodeBindingService(
+				"postgres://localhost:1/db",
+				nil,
+				"",
+			)
+			require.Error(t, err)
+			assert.Nil(t, svc)
+		})
+
+		t.Run("AutoMigrate is idempotent", func(t *testing.T) {
+			svc, err := NewDatabaseOpenCodeBindingService(":memory:", nil, "")
+			require.NoError(t, err)
+			require.NoError(t, svc.AutoMigrate())
+			require.NoError(t, svc.AutoMigrate())
+		})
+
+		t.Run("Update and Delete return not found for unknown binding", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+			_, err := svc.Update(t.Context(), "missing-binding", UpdateOpenCodeBindingParams{
+				AgentCommand: OpenCodeAgentCommand{
+					Command: "opencode",
+					Args:    []string{"run"},
+				},
+				LaunchOptions: OpenCodeLaunchOptions{Transport: "stdio"},
+			})
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrOpenCodeBindingNotFound)
+
+			err = svc.Delete(t.Context(), "missing-binding")
+			require.Error(t, err)
+			require.ErrorIs(t, err, ErrOpenCodeBindingNotFound)
+		})
+
+		t.Run("Create and Update return validation errors", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+			_, err := svc.Create(t.Context(), CreateOpenCodeBindingParams{
+				Name:        "binding-ok",
+				ProfileName: "profile-ok",
+			})
+			require.Error(t, err)
+
+			created, err := svc.Create(t.Context(), makeCreateParams())
+			require.NoError(t, err)
+
+			_, err = svc.Update(t.Context(), created.Name, UpdateOpenCodeBindingParams{
+				AgentCommand: OpenCodeAgentCommand{
+					Command: " ",
+				},
+			})
+			require.Error(t, err)
+		})
+
+		t.Run("closed db returns operation errors", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+			concrete := svc.(*DatabaseOpenCodeBindingService)
+			sqlDB, err := concrete.db.DB()
+			require.NoError(t, err)
+			require.NoError(t, sqlDB.Close())
+
+			_, err = svc.List(t.Context())
+			require.Error(t, err)
+			_, err = svc.Get(t.Context(), "any")
+			require.Error(t, err)
+			_, err = svc.Create(t.Context(), makeCreateParams())
+			require.Error(t, err)
+			_, err = svc.Update(t.Context(), "any", UpdateOpenCodeBindingParams{
+				AgentCommand: OpenCodeAgentCommand{
+					Command: "opencode",
+					Args:    []string{"run"},
+				},
+				LaunchOptions: OpenCodeLaunchOptions{Transport: "stdio"},
+			})
+			require.Error(t, err)
+			err = svc.Delete(t.Context(), "any")
+			require.Error(t, err)
+		})
+	})
 }

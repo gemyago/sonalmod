@@ -5,6 +5,7 @@ package agent
 import (
 	"testing"
 
+	"github.com/gemyago/sonalmod/runtime/internal"
 	cl "github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/stretchr/testify/require"
 )
@@ -17,4 +18,13 @@ func TestOpenCodeBindingsAliases(t *testing.T) {
 func TestOpenCodeBindingConstructorsAreExported(t *testing.T) {
 	require.NotNil(t, NewFileOpenCodeBindingService)
 	require.NotNil(t, NewDatabaseOpenCodeBindingService)
+
+	rootTestLogger := internal.RootTestLogger()
+	fileSvc, err := NewFileOpenCodeBindingService(t.TempDir(), rootTestLogger)
+	require.NoError(t, err)
+	require.NotNil(t, fileSvc)
+
+	dbSvc, err := NewDatabaseOpenCodeBindingService(":memory:", rootTestLogger, "")
+	require.NoError(t, err)
+	require.NotNil(t, dbSvc)
 }

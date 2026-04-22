@@ -84,8 +84,6 @@ func parseModelName(fqModelName string) (string, string, error) {
 // ResolveModel returns a model.LLM for the given fully-qualified model name.
 // It parses provider/model, looks up the provider config, manages a per-provider
 // genkit cache (invalidated by UpdatedAt), and creates a new genkit instance when needed.
-//
-//nolint:ireturn // interface required by ADK model runner
 func (l *ModelsLocator) ResolveModel(ctx context.Context, fqModelName string) (model.LLM, error) {
 	providerName, _, err := parseModelName(fqModelName)
 	if err != nil {
@@ -174,8 +172,6 @@ func defaultGenkitInit(ctx context.Context, cfg lp.ProviderConfig) (*genkit.Genk
 }
 
 // openAICompatiblePlugin creates the genkit plugin for an OpenAI-compatible provider.
-//
-//nolint:ireturn // plugin factory returns interface type
 func openAICompatiblePlugin(cfg lp.ProviderConfig) genkitApi.Plugin {
 	return &oai.OpenAICompatible{
 		Provider: cfg.Name,

@@ -77,7 +77,7 @@ type ToolsProvider interface {
 }
 
 // StaticTools returns a ToolsProvider that returns the given tools.
-func StaticTools(tools []tool.Tool) ToolsProvider { //nolint:ireturn // returns interface by contract
+func StaticTools(tools []tool.Tool) ToolsProvider {
 	return &staticToolsProvider{tools: tools}
 }
 
@@ -151,7 +151,7 @@ type AgentRunner struct {
 
 // resolveSession returns a session for the given sessionID. Requires non-empty sessionID.
 // Tries Get first; if not found, creates via Create with the provided ID.
-func (a *AgentRunner) resolveSession( //nolint:ireturn // session backend returns interface type
+func (a *AgentRunner) resolveSession(
 	ctx context.Context,
 	userID, sessionID string,
 ) (session.Session, error) {
@@ -313,8 +313,6 @@ func sliceToIter(events []*SessionEvent) iter.Seq2[*SessionEvent, error] {
 }
 
 // RunExecutorFactoryFromRunner adapts [runner.New] to [LLMAgentRunnerRunFactory].
-//
-//nolint:ireturn // factory returns interface by design
 func RunExecutorFactoryFromRunner(cfg runner.Config) (LLMRunner, error) {
 	return runner.New(cfg)
 }

@@ -28,12 +28,10 @@ type CreateOpenCodeBindingParams = cl.CreateOpenCodeBindingParams
 type UpdateOpenCodeBindingParams = cl.UpdateOpenCodeBindingParams
 
 // OpenCodeBindingService manages persisted OpenCode binding definitions.
-//
-//nolint:revive // public naming intentionally matches runtime contract style.
 type OpenCodeBindingService = cl.OpenCodeBindingService
 
 // NewFileOpenCodeBindingService creates a file-backed OpenCode bindings service.
-func NewFileOpenCodeBindingService( //nolint:ireturn
+func NewFileOpenCodeBindingService( //nolint:ireturn // public contract returns service interface alias.
 	baseDir string,
 	logger *slog.Logger,
 ) (OpenCodeBindingService, error) {
@@ -41,7 +39,7 @@ func NewFileOpenCodeBindingService( //nolint:ireturn
 }
 
 // NewDatabaseOpenCodeBindingService creates a database-backed OpenCode bindings service.
-func NewDatabaseOpenCodeBindingService( //nolint:ireturn
+func NewDatabaseOpenCodeBindingService( //nolint:ireturn // public contract returns service interface alias.
 	dsn string,
 	logger *slog.Logger,
 	tablePrefix string,

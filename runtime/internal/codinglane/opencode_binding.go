@@ -57,8 +57,6 @@ type UpdateOpenCodeBindingParams struct {
 }
 
 // OpenCodeBindingService manages persisted OpenCode binding definitions.
-//
-//nolint:revive // service name intentionally mirrors public aliases.
 type OpenCodeBindingService interface {
 	// List returns all bindings sorted by CreatedAt ascending.
 	List(ctx context.Context) ([]OpenCodeBinding, error)

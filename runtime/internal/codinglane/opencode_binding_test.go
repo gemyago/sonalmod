@@ -43,6 +43,15 @@ func TestOpenCodeBindingDomainValidation(t *testing.T) {
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "profile_name is required")
 		})
+
+		t.Run("rejects malformed profile reference", func(t *testing.T) {
+			params := makeCreateParams()
+			params.ProfileName = "Profile-Upper"
+
+			_, err := normalizeCreateOpenCodeBindingParams(params)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid profile name")
+		})
 	})
 
 	t.Run("applyOpenCodeBindingUpdate preserves immutable fields", func(t *testing.T) {
@@ -80,7 +89,7 @@ func TestOpenCodeBindingDomainValidation(t *testing.T) {
 	})
 
 	t.Run("OpenCodeBinding schema excludes general profile fields", func(t *testing.T) {
-		typ := reflect.TypeOf(OpenCodeBinding{})
+		typ := reflect.TypeFor[OpenCodeBinding]()
 		disallowed := map[string]struct{}{
 			"Role":              {},
 			"Instructions":      {},
@@ -88,9 +97,64 @@ func TestOpenCodeBindingDomainValidation(t *testing.T) {
 			"ExecutionSettings": {},
 		}
 
-		for i := range typ.NumField() {
-			_, found := disallowed[typ.Field(i).Name]
-			assert.False(t, found, "field %s must stay out of OpenCode binding schema", typ.Field(i).Name)
+		for field := range typ.Fields() {
+			_, found := disallowed[field.Name]
+			assert.False(t, found, "field %s must stay out of OpenCode binding schema", field.Name)
 		}
+	})
+
+	t.Run("normalizeAgentCommand validates command and args", func(t *testing.T) {
+		_, err := normalizeAgentCommand(OpenCodeAgentCommand{})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "agent_command.command is required")
+
+		_, err = normalizeAgentCommand(OpenCodeAgentCommand{
+			Command: "open\ncode",
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "control characters")
+
+		_, err = normalizeAgentCommand(OpenCodeAgentCommand{
+			Command: "opencode",
+			Args:    []string{"run", " "},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must not contain empty values")
+
+		_, err = normalizeAgentCommand(OpenCodeAgentCommand{
+			Command: "opencode",
+			Args:    []string{"run", "run"},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must be unique")
+
+		_, err = normalizeAgentCommand(OpenCodeAgentCommand{
+			Command: "opencode",
+			Args:    []string{"run", "--\tjson"},
+		})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "control characters")
+	})
+
+	t.Run("normalizeLaunchOptions constrains transport", func(t *testing.T) {
+		opts, err := normalizeLaunchOptions(OpenCodeLaunchOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, "stdio", opts.Transport)
+
+		_, err = normalizeLaunchOptions(OpenCodeLaunchOptions{Transport: "http"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "must be stdio")
+	})
+
+	t.Run("applyOpenCodeBindingUpdate validates payload", func(t *testing.T) {
+		existing := OpenCodeBinding{
+			Name:        "binding-main",
+			ProfileName: "profile-main",
+			CreatedAt:   time.Now().UTC(),
+		}
+		_, err := applyOpenCodeBindingUpdate(existing, UpdateOpenCodeBindingParams{
+			AgentCommand: OpenCodeAgentCommand{},
+		})
+		require.Error(t, err)
 	})
 }
