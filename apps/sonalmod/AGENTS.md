@@ -53,7 +53,7 @@ From `apps/sonalmod` (with `GOBIN` or `GOPATH/bin` on your `PATH`):
 
 ## Lint / test
 
-- **This module:** `make lint`, `make test` from `apps/sonalmod` (uses pinned `golangci-lint` from `bin/` unless `CI=true`).
+- **This module:** `make lint`, `make test` from `apps/sonalmod` (uses repo-root pinned `golangci-lint` from `bin/` unless `CI=true`).
 - **Whole repo:** from the repository root, `make lint` and `make test` include this module via `$(MAKE) -C apps/sonalmod …`.
 
 ## Module Rules and Conventions

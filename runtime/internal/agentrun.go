@@ -76,16 +76,17 @@ type ToolsProvider interface {
 	GetTools() ([]tool.Tool, error)
 }
 
-// StaticTools returns a ToolsProvider that returns the given tools.
-func StaticTools(tools []tool.Tool) ToolsProvider {
-	return &staticToolsProvider{tools: tools}
+// StaticTools returns a provider that serves a fixed set of tools.
+func StaticTools(tools []tool.Tool) *StaticToolsProvider {
+	return &StaticToolsProvider{tools: tools}
 }
 
-type staticToolsProvider struct {
+// StaticToolsProvider returns a fixed set of tools.
+type StaticToolsProvider struct {
 	tools []tool.Tool
 }
 
-func (s *staticToolsProvider) GetTools() ([]tool.Tool, error) {
+func (s *StaticToolsProvider) GetTools() ([]tool.Tool, error) {
 	return s.tools, nil
 }
 
@@ -149,38 +150,38 @@ type AgentRunner struct {
 	logger         *slog.Logger
 }
 
-// resolveSession returns a session for the given sessionID. Requires non-empty sessionID.
-// Tries Get first; if not found, creates via Create with the provided ID.
-func (a *AgentRunner) resolveSession(
+// ensureSession verifies the session exists for the given sessionID.
+// Requires non-empty sessionID. Tries Get first; if not found, creates via Create.
+func (a *AgentRunner) ensureSession(
 	ctx context.Context,
 	userID, sessionID string,
-) (session.Session, error) {
+) error {
 	if sessionID == "" {
-		return nil, errors.New("sessionID is required")
+		return errors.New("sessionID is required")
 	}
 
-	getResp, err := a.sessionStorage.Get(ctx, &session.GetRequest{
+	_, err := a.sessionStorage.Get(ctx, &session.GetRequest{
 		AppName:   a.appName,
 		UserID:    userID,
 		SessionID: sessionID,
 	})
 	if err == nil {
-		return getResp.Session, nil
+		return nil
 	}
 	if !strings.Contains(err.Error(), "not found") {
-		return nil, fmt.Errorf("session %s: %w", sessionID, err)
+		return fmt.Errorf("session %s: %w", sessionID, err)
 	}
 
-	createResp, err := a.sessionStorage.Create(ctx, &session.CreateRequest{
+	_, err = a.sessionStorage.Create(ctx, &session.CreateRequest{
 		AppName:   a.appName,
 		UserID:    userID,
 		SessionID: sessionID,
 		State:     make(map[string]any),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create session %s: %w", sessionID, err)
+		return fmt.Errorf("create session %s: %w", sessionID, err)
 	}
-	return createResp.Session, nil
+	return nil
 }
 
 type RunParams struct {
@@ -195,8 +196,7 @@ func (a *AgentRunner) Run(ctx context.Context, params RunParams) (*RunResult, er
 		return nil, errors.New("sessionID is required")
 	}
 
-	sess, err := a.resolveSession(ctx, params.UserID, params.SessionID)
-	if err != nil {
+	if err := a.ensureSession(ctx, params.UserID, params.SessionID); err != nil {
 		return nil, err
 	}
 
@@ -209,10 +209,10 @@ func (a *AgentRunner) Run(ctx context.Context, params RunParams) (*RunResult, er
 	)
 
 	genAIMsg := messageContentToGenAI(params.Message)
-	adkEvents := a.llmRunner.Run(ctx, params.UserID, sess.ID(), genAIMsg, agent.RunConfig{
+	adkEvents := a.llmRunner.Run(ctx, params.UserID, params.SessionID, genAIMsg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
 	})
-	return NewRunResult(MapADKSessionEventSeq(adkEvents), sess.ID()), nil
+	return NewRunResult(MapADKSessionEventSeq(adkEvents), params.SessionID), nil
 }
 
 // ReadSessionParams contains the parameters for reading a session.
@@ -313,6 +313,8 @@ func sliceToIter(events []*SessionEvent) iter.Seq2[*SessionEvent, error] {
 }
 
 // RunExecutorFactoryFromRunner adapts [runner.New] to [LLMAgentRunnerRunFactory].
+//
+//nolint:ireturn // This adapter must match the consumer-defined LLMRunner abstraction used for tests and orchestration.
 func RunExecutorFactoryFromRunner(cfg runner.Config) (LLMRunner, error) {
 	return runner.New(cfg)
 }

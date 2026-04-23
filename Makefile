@@ -1,3 +1,5 @@
+include build/make/golangci-lint.mk
+
 cover_dir=.cover
 cover_profile=$(cover_dir)/profile.out
 
@@ -52,8 +54,13 @@ push-test-artifacts: $(cover_dir)/coverage.svg.gh-cli-body.json $(cover_dir)/cov
 		--input $(cover_dir)/coverage.html.gh-cli-body.json
 
 .PHONY: affected-lint-test
+ifeq ($(CI),true)
 affected-lint-test:
 	npx nx affected -t lint test --tuiAutoExit
+else
+affected-lint-test: $(GOLANGCI_LINT_BIN)
+	npx nx affected -t lint test --tuiAutoExit
+endif
 
 .PHONY: lint
 lint:

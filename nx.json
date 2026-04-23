@@ -3,7 +3,11 @@
   "defaultBase": "main",
   "analytics": false,
   "namedInputs": {
-    "golangci": ["{workspaceRoot}/.golangci.yml"]
+    "golangci": [
+      "{workspaceRoot}/.golangci.yml",
+      "{workspaceRoot}/.golangci-version",
+      "{workspaceRoot}/build/make/golangci-lint.mk"
+    ]
   },
   "plugins": [
     "@nx-go/nx-go"

@@ -36,7 +36,7 @@ type LoggerProviderDeps struct {
 }
 
 // NewLoggerProvider creates a new LoggerProvider with OTLP exporter.
-func NewLoggerProvider( //nolint:ireturn // OpenTelemetry LoggerProvider factory
+func NewLoggerProvider( //nolint:ireturn // Telemetry DI consumes the upstream LoggerProvider interface and this factory may return sdk or noop providers.
 	ctx context.Context,
 	deps LoggerProviderDeps,
 ) (log.LoggerProvider, error) { // coverage-ignore -- Little value in testing this factory function

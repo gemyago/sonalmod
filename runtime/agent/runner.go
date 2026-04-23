@@ -136,7 +136,7 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		opt(rOpts)
 	}
 
-	toolsProvider := internal.StaticTools(nil)
+	var toolsProvider internal.ToolsProvider = internal.StaticTools(nil)
 	if rOpts.toolsRegistry != nil {
 		toolsProvider = &toolsRegistryProvider{reg: rOpts.toolsRegistry}
 	}

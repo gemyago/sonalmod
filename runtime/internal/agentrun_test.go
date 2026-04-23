@@ -46,8 +46,8 @@ func TestResolveSession(t *testing.T) {
 		}
 	}
 
-	t.Run("resolveSession", func(t *testing.T) {
-		t.Run("non-empty sessionID Get returns session returns session", func(t *testing.T) {
+	t.Run("ensureSession", func(t *testing.T) {
+		t.Run("non-empty sessionID Get returns existing session without error", func(t *testing.T) {
 			deps := makeMockDeps(t)
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -73,13 +73,10 @@ func TestResolveSession(t *testing.T) {
 				}).
 				Return(&session.GetResponse{Session: expectedSess}, nil)
 
-			got, err := runner.resolveSession(ctx, userID, sessionID)
-			require.NoError(t, err)
-			assert.Equal(t, expectedSess, got)
-			assert.Equal(t, sessionID, got.ID())
+			require.NoError(t, runner.ensureSession(ctx, userID, sessionID))
 		})
 
-		t.Run("non-empty sessionID Get not found Create called with that ID returns session", func(t *testing.T) {
+		t.Run("non-empty sessionID Get not found creates session without error", func(t *testing.T) {
 			deps := makeMockDeps(t)
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -114,10 +111,7 @@ func TestResolveSession(t *testing.T) {
 				}).
 				Return(&session.CreateResponse{Session: expectedSess}, nil)
 
-			got, err := runner.resolveSession(ctx, userID, sessionID)
-			require.NoError(t, err)
-			assert.Equal(t, expectedSess, got)
-			assert.Equal(t, sessionID, got.ID())
+			require.NoError(t, runner.ensureSession(ctx, userID, sessionID))
 		})
 
 		t.Run("empty sessionID returns error", func(t *testing.T) {
@@ -126,9 +120,8 @@ func TestResolveSession(t *testing.T) {
 			userID := fake.UUID().V4()
 			runner := newAgentRunner(t, deps, fake.Lorem().Word())
 
-			got, err := runner.resolveSession(ctx, userID, "")
+			err := runner.ensureSession(ctx, userID, "")
 			require.Error(t, err)
-			assert.Nil(t, got)
 			assert.Contains(t, err.Error(), "sessionID")
 		})
 
@@ -149,9 +142,8 @@ func TestResolveSession(t *testing.T) {
 				}).
 				Return(nil, getErr)
 
-			got, err := runner.resolveSession(ctx, userID, sessionID)
+			err := runner.ensureSession(ctx, userID, sessionID)
 			require.Error(t, err)
-			assert.Nil(t, got)
 			assert.ErrorIs(t, err, getErr)
 		})
 
@@ -181,9 +173,8 @@ func TestResolveSession(t *testing.T) {
 				}).
 				Return(nil, createErr)
 
-			got, err := runner.resolveSession(ctx, userID, sessionID)
+			err := runner.ensureSession(ctx, userID, sessionID)
 			require.Error(t, err)
-			assert.Nil(t, got)
 			assert.ErrorIs(t, err, createErr)
 		})
 	})
@@ -262,7 +253,7 @@ func TestResolveSession(t *testing.T) {
 			assert.Contains(t, err.Error(), "sessionID")
 		})
 
-		t.Run("resolveSession error Run returns error", func(t *testing.T) {
+		t.Run("ensureSession error Run returns error", func(t *testing.T) {
 			deps := makeMockDeps(t)
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()

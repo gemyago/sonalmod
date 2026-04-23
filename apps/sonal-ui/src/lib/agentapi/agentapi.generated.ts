@@ -155,6 +155,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all saved agent profiles */
+        get: operations["listAgentProfiles"];
+        put?: never;
+        /** Create a new saved agent profile */
+        post: operations["createAgentProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-profiles/{profileName}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a saved agent profile by name */
+        get: operations["getAgentProfile"];
+        /** Update mutable fields for a saved agent profile */
+        put: operations["updateAgentProfile"];
+        post?: never;
+        /** Delete a saved agent profile by name */
+        delete: operations["deleteAgentProfile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/opencode-bindings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all saved OpenCode bindings */
+        get: operations["listOpenCodeBindings"];
+        put?: never;
+        /** Create a new saved OpenCode binding */
+        post: operations["createOpenCodeBinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/opencode-bindings/{bindingName}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a saved OpenCode binding by name */
+        get: operations["getOpenCodeBinding"];
+        /** Update mutable fields for a saved OpenCode binding */
+        put: operations["updateOpenCodeBinding"];
+        post?: never;
+        /** Delete a saved OpenCode binding by name */
+        delete: operations["deleteOpenCodeBinding"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/opencode-launches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Launch OpenCode coding run from saved profile and binding selectors */
+        post: operations["createOpenCodeLaunch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -372,6 +463,138 @@ export interface components {
         ProviderListResponse: {
             providers: components["schemas"]["ProviderResponse"][];
         };
+        /** @description Runtime-owned execution defaults for an agent profile. */
+        AgentProfileExecutionSettings: {
+            /** @description Fully-qualified default model in `provider/model-name` form. */
+            defaultModel: string;
+        };
+        /** @description Request body for creating a saved agent profile. */
+        CreateAgentProfileRequest: {
+            /** @description Unique technical profile name (primary key). Immutable after creation. */
+            name: string;
+            /** @description Optional human-friendly profile label. */
+            displayName?: string;
+            /** @description Profile role describing high-level responsibility. */
+            role: string;
+            /** @description Profile-specific behavior instructions. */
+            instructions: string;
+            /** @description Tool references available to this profile. */
+            toolRefs?: string[];
+            executionSettings: components["schemas"]["AgentProfileExecutionSettings"];
+        };
+        /** @description Request body for updating a saved agent profile. `name` is immutable and not accepted here. */
+        UpdateAgentProfileRequest: {
+            /** @description Human-friendly profile label. */
+            displayName?: string;
+            /** @description Profile role describing high-level responsibility. */
+            role: string;
+            /** @description Profile-specific behavior instructions. */
+            instructions: string;
+            /** @description Tool references available to this profile. Replaces the existing list. */
+            toolRefs?: string[];
+            executionSettings: components["schemas"]["AgentProfileExecutionSettings"];
+        };
+        /** @description A saved agent profile as returned by the API. */
+        AgentProfileResponse: {
+            /** @description Unique technical profile name (primary key). */
+            name: string;
+            /** @description Human-friendly profile label (may be empty). */
+            displayName: string;
+            /** @description Profile role describing high-level responsibility. */
+            role: string;
+            /** @description Profile-specific behavior instructions. */
+            instructions: string;
+            /** @description Tool references available to this profile. */
+            toolRefs: string[];
+            executionSettings: components["schemas"]["AgentProfileExecutionSettings"];
+            /**
+             * Format: date-time
+             * @description ISO 8601 creation timestamp.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 last-update timestamp.
+             */
+            updatedAt: string;
+        };
+        /** @description List of saved agent profiles. */
+        AgentProfileListResponse: {
+            profiles: components["schemas"]["AgentProfileResponse"][];
+        };
+        /** @description OpenCode command defaults used to launch ACP. */
+        OpenCodeAgentCommand: {
+            /** @description Command executable to run OpenCode. */
+            command: string;
+            /** @description Command arguments passed as-is to the OpenCode executable. */
+            args: string[];
+        };
+        /** @description OpenCode launch defaults. */
+        OpenCodeLaunchOptions: {
+            /** @description ACP transport mode. Only `stdio` is supported. */
+            transport: string;
+        };
+        /** @description Request body for creating an OpenCode binding. */
+        CreateOpenCodeBindingRequest: {
+            /** @description Unique technical binding name (primary key). */
+            name: string;
+            /** @description Name of the saved general profile associated with this binding. */
+            profileName: string;
+            /** @description Optional working directory used for OpenCode launch. */
+            cwd?: string;
+            agentCommand: components["schemas"]["OpenCodeAgentCommand"];
+            launchOptions: components["schemas"]["OpenCodeLaunchOptions"];
+        };
+        /** @description Request body for updating mutable OpenCode binding fields. */
+        UpdateOpenCodeBindingRequest: {
+            /** @description Working directory used for OpenCode launch. */
+            cwd?: string;
+            agentCommand: components["schemas"]["OpenCodeAgentCommand"];
+            launchOptions: components["schemas"]["OpenCodeLaunchOptions"];
+        };
+        /** @description A saved OpenCode binding as returned by the API. */
+        OpenCodeBindingResponse: {
+            name: string;
+            profileName: string;
+            cwd: string;
+            agentCommand: components["schemas"]["OpenCodeAgentCommand"];
+            launchOptions: components["schemas"]["OpenCodeLaunchOptions"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description List of saved OpenCode bindings. */
+        OpenCodeBindingListResponse: {
+            bindings: components["schemas"]["OpenCodeBindingResponse"][];
+        };
+        /** @description Launch input selecting saved profile and optional binding. */
+        CreateOpenCodeLaunchRequest: {
+            /** @description Saved profile selector. */
+            profileName: string;
+            /** @description Optional saved binding selector. When omitted, the first binding for the profile is used. */
+            bindingName?: string;
+            /** @description User prompt forwarded to OpenCode launch flow. */
+            prompt: string;
+        };
+        /** @description Parsed ACP session/update notification from launch execution. */
+        OpenCodeLaunchUpdate: {
+            sessionId: string;
+            type: string;
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Result of a launched OpenCode coding run. */
+        OpenCodeLaunchResponse: {
+            profileName: string;
+            bindingName: string;
+            sessionId: string;
+            promptResult: {
+                [key: string]: unknown;
+            };
+            updates: components["schemas"]["OpenCodeLaunchUpdate"][];
+        };
         /** @description RFC 9457 problem details (subset). */
         ProblemDetails: {
             /** Format: uri */
@@ -436,6 +659,10 @@ export interface components {
         SessionId: string;
         /** @description Unique provider name (primary key, e.g. `openai`, `openrouter`). */
         ProviderName: string;
+        /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+        ProfileName: string;
+        /** @description Unique OpenCode binding name (primary key, e.g. `opencode-main`). */
+        BindingName: string;
     };
     requestBodies: never;
     headers: never;
@@ -725,6 +952,296 @@ export interface operations {
                 };
                 content?: never;
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAgentProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of saved agent profiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Agent profile created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+                profileName: components["parameters"]["ProfileName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+                profileName: components["parameters"]["ProfileName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated agent profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+                profileName: components["parameters"]["ProfileName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent profile deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listOpenCodeBindings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of saved OpenCode bindings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenCodeBindingListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createOpenCodeBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOpenCodeBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description OpenCode binding created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenCodeBindingResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getOpenCodeBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique OpenCode binding name (primary key, e.g. `opencode-main`). */
+                bindingName: components["parameters"]["BindingName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OpenCode binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenCodeBindingResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateOpenCodeBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique OpenCode binding name (primary key, e.g. `opencode-main`). */
+                bindingName: components["parameters"]["BindingName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateOpenCodeBindingRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated OpenCode binding. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenCodeBindingResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteOpenCodeBinding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique OpenCode binding name (primary key, e.g. `opencode-main`). */
+                bindingName: components["parameters"]["BindingName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OpenCode binding deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createOpenCodeLaunch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOpenCodeLaunchRequest"];
+            };
+        };
+        responses: {
+            /** @description OpenCode launch completed and returns session details. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenCodeLaunchResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];

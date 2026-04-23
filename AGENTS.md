@@ -20,6 +20,7 @@ This project is early in development; breaking public API changes are not a conc
 │       └── AGENTS.md
 ├── build/
 │   ├── AGENTS.md
+│   ├── make/                     # shared make fragments (repo-root pinned golangci-lint, etc.)
 │   └── npm/                      # pipeline sources — details in build/AGENTS.md
 ├── tests/                        # high-level integration/e2e tests — [tests/AGENTS.md](./tests/AGENTS.md)
 │   └── AGENTS.md
@@ -58,6 +59,8 @@ This monorepo is managed by Nx. Most typical tasks are:
 
 To run all affected lint and tests, use `make affected-lint-test`
 
+If `ireturn` results or `//nolint:ireturn` reports look stale or irrelevant, run `bin/golangci-lint cache clean` and rerun lint; the current pinned version has a cache issue.
+
 ## npm Release Build Pipeline
 
 All release build logic lives in `build/npm/`. The pipeline is local-first: every step runs identically on developer machines and in CI.
@@ -88,6 +91,8 @@ AI must always follow the rules and conventions defined in this section. This se
 The rules are:
 - Update project rules and conventions when user corrects the behavior of AI.
 - Each rule must aim to be a simple and clear one line (50-80 characters)
+- Pin golangci-lint once at repo root via build/make.
+- Clean golangci-lint cache if ireturn results look irrelevant.
 
 Gopher skill must be used prior to **writing** any Go code, or **planning** go code changes.
 

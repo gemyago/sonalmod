@@ -342,14 +342,14 @@ func (s *fileSession) UserID() string {
 	return s.userID
 }
 
-func (s *fileSession) State() session.State {
+func (s *fileSession) State() session.State { //nolint:ireturn // session.Session requires the upstream session.State interface.
 	return &fileSessionState{
 		mu:    &s.mu,
 		state: s.state,
 	}
 }
 
-func (s *fileSession) Events() session.Events {
+func (s *fileSession) Events() session.Events { //nolint:ireturn // session.Session requires the upstream session.Events interface.
 	return fileSessionEvents(s.events)
 }
 
@@ -705,7 +705,7 @@ func (s *FileSessionService) listSessionsInDir(appName, userID, dir string) ([]s
 
 func (s *FileSessionService) loadSessionMetadata(
 	appName, userID, sessionID string,
-) (session.Session, error) {
+) (*fileSession, error) {
 	path := sessionPath(s.baseDir, appName, userID, sessionID)
 	data, err := os.ReadFile(path)
 	if err != nil {

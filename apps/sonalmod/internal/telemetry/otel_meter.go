@@ -36,7 +36,7 @@ type MeterProviderDeps struct {
 }
 
 // NewMeterProvider creates a new MeterProvider suitable for the given configuration.
-func NewMeterProvider( //nolint:ireturn // OpenTelemetry MeterProvider factory
+func NewMeterProvider( //nolint:ireturn // Telemetry DI consumes the upstream MeterProvider interface and this factory may return sdk or noop providers.
 	ctx context.Context,
 	deps MeterProviderDeps,
 ) (metric.MeterProvider, error) { // coverage-ignore -- Little value in testing this factory function
