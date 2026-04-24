@@ -29,6 +29,7 @@ node_modules
 
 .nx/cache
 .nx/workspace-data
+.cache/
 
 # Local ACP probe outputs (generated on demand, not committed)
 docs/implementation/opencode-acp-transcripts/*.jsonl

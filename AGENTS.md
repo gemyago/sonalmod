@@ -59,7 +59,7 @@ This monorepo is managed by Nx. Most typical tasks are:
 
 To run all affected lint and tests, use `make affected-lint-test`
 
-If `ireturn` results or `//nolint:ireturn` reports look stale or irrelevant, run `bin/golangci-lint cache clean` and rerun lint; the current pinned version has a cache issue.
+If `ireturn` results or `//nolint:ireturn` reports look stale or irrelevant, clean the module-scoped cache under `.cache/golangci-lint/<module>/` and rerun lint; the current pinned version has a cache issue.
 
 ## npm Release Build Pipeline
 
@@ -92,6 +92,7 @@ The rules are:
 - Update project rules and conventions when user corrects the behavior of AI.
 - Each rule must aim to be a simple and clear one line (50-80 characters)
 - Pin golangci-lint once at repo root via build/make.
+- Use per-module golangci-lint cache under repo `.cache/`.
 - Clean golangci-lint cache if ireturn results look irrelevant.
 
 Gopher skill must be used prior to **writing** any Go code, or **planning** go code changes.

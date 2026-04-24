@@ -10,7 +10,7 @@
 
 | Path | Role |
 |------|------|
-| `golangci-lint.mk` | Shared repo-root pinned `golangci-lint` install/rule fragment reused by Go-module Makefiles |
+| `golangci-lint.mk` | Shared repo-root pinned `golangci-lint` install/rule fragment reused by Go-module Makefiles; exports per-module cache paths under `.cache/golangci-lint/` |
 
 ### `build/npm/`
 

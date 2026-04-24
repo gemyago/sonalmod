@@ -13,14 +13,8 @@ DEFAULT_TESTS_TIMEOUT ?= 10s
 
 all: test
 
-# CI (e.g. golangci-lint-action install-only) provides golangci-lint on PATH; locally use the repo-pinned root bin/.
-ifeq ($(CI),true)
-lint:
-	golangci-lint run
-else
-lint: $(GOLANGCI_LINT_BIN)
-	$(GOLANGCI_LINT_BIN) run
-endif
+lint: $(GOLANGCI_LINT_PREREQS)
+	$(GOLANGCI_LINT_RUN)
 
 $(cover_dir):
 	mkdir -p $(cover_dir)
