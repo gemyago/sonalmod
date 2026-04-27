@@ -8,13 +8,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 )
 
-// OpenCodeLaunchRequest identifies saved config and a prompt for a coding run.
-type OpenCodeLaunchRequest struct {
-	ProfileName string
-	BindingName string
-	Prompt      string
-}
-
 // MapACPStdioExecutorRequest composes ACP stdio executor input from profile defaults.
 func MapACPStdioExecutorRequest(
 	profile agentprofiles.AgentProfile,
@@ -54,28 +47,4 @@ func MapACPStdioExecutorRequest(
 		Prompt:            composedPrompt,
 		MCPServers:        []any{},
 	}, nil
-}
-
-// MapOpenCodeLaunchRequest composes ACP stdio executor input from profile settings.
-func MapOpenCodeLaunchRequest(
-	profile agentprofiles.AgentProfile,
-	binding OpenCodeBinding,
-	request OpenCodeLaunchRequest,
-) (ACPStdioExecutorRequest, error) {
-	if profile.Name == "" {
-		return ACPStdioExecutorRequest{}, errors.New("profile name is required")
-	}
-	if binding.Name == "" {
-		return ACPStdioExecutorRequest{}, errors.New("binding name is required")
-	}
-	if binding.ProfileName != profile.Name {
-		return ACPStdioExecutorRequest{}, fmt.Errorf(
-			"binding %s references profile %s but launch requested profile %s",
-			binding.Name,
-			binding.ProfileName,
-			profile.Name,
-		)
-	}
-
-	return MapACPStdioExecutorRequest(profile, request.Prompt)
 }

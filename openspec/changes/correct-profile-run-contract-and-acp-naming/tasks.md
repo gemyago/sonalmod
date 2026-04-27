@@ -22,8 +22,8 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 4. Finish ACP Naming Cleanup
 
-- [ ] 4.1 Delete dead OpenCode binding and launch-mapper remnants that are no longer used after the public API removal, along with their obsolete tests and fixtures.
-- [ ] 4.2 Rename surviving generic ACP stdio runtime concepts away from `opencode` naming, keeping `OpenCode` wording only in executable-specific leaf adapters, fixtures, or clearly historical references.
+- [x] 4.1 Delete dead OpenCode binding and launch-mapper remnants that are no longer used after the public API removal, along with their obsolete tests and fixtures.
+- [x] 4.2 Rename surviving generic ACP stdio runtime concepts away from `opencode` naming, keeping `OpenCode` wording only in executable-specific leaf adapters, fixtures, or clearly historical references.
 
 ## 5. Verification
 
