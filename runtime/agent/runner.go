@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/gemyago/sonalmod/runtime/internal"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
+	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/gemyago/sonalmod/runtime/internal/summarize"
 	"google.golang.org/adk/agent/llmagent"
@@ -37,6 +39,9 @@ var _ internal.ToolsProvider = (*toolsRegistryProvider)(nil)
 type RunnerArgs struct {
 	// ProvidersConfigService is required. NewRunner wires a ModelsLocator for LLM resolution.
 	ProvidersConfigService ProvidersConfigService
+	// AgentProfilesService enables profile-backed run dispatch when profileName is provided.
+	// When nil, profileName-based execution is unavailable.
+	AgentProfilesService AgentProfilesService
 
 	// genkitInitFunc overrides the genkit initialization function used by ModelsLocator.
 	// Intended for tests only; production code leaves this nil.
@@ -122,6 +127,7 @@ type Runner struct {
 	rOpts           *runnerOpts
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
+	profileRuns     *profileexec.Dispatcher
 }
 
 func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
@@ -183,13 +189,33 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		RootLogger:            rOpts.logger,
 	})
 
-	return &Runner{
+	runner := &Runner{
 		runnerFactory:   runnerFactory,
 		toolsProvider:   toolsProvider,
 		rOpts:           rOpts,
 		sessionsStorage: ss,
 		modelsLocator:   modelsLocator,
-	}, nil
+	}
+
+	if args.AgentProfilesService != nil {
+		sessionRecorder, recorderErr := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
+		if recorderErr != nil {
+			return nil, fmt.Errorf("create profile run dispatcher: %w", recorderErr)
+		}
+
+		profileRuns, dispatchErr := profileexec.NewDispatcher(
+			args.AgentProfilesService,
+			&runnerProfileRegularRunner{runner: runner},
+			sessionRecorder,
+		)
+		if dispatchErr != nil {
+			return nil, fmt.Errorf("create profile run dispatcher: %w", dispatchErr)
+		}
+
+		runner.profileRuns = profileRuns
+	}
+
+	return runner, nil
 }
 
 const (
@@ -197,11 +223,26 @@ const (
 	defaultRunnerAgentName = "sonalmod"
 )
 
-func (r *Runner) newAgentRunnerParams(modelName string) internal.NewAgentRunnerParams {
+func (r *Runner) newAgentRunnerParams(
+	modelName string,
+	agentName string,
+	profileInstructions string,
+) internal.NewAgentRunnerParams {
+	systemPromptFragments := append(
+		[]SystemPromptFragment(nil),
+		r.rOpts.systemPromptFragments...,
+	)
+	if strings.TrimSpace(profileInstructions) != "" {
+		systemPromptFragments = append(systemPromptFragments, SystemPromptFragment{
+			Section: "Profile Instructions",
+			Content: profileInstructions,
+		})
+	}
+
 	return internal.NewAgentRunnerParams{
 		AppName:               defaultRunnerAppName,
-		AgentName:             defaultRunnerAgentName,
-		SystemPromptFragments: r.rOpts.systemPromptFragments,
+		AgentName:             agentName,
+		SystemPromptFragments: systemPromptFragments,
 		ToolsRegistry:         r.toolsProvider,
 		ModelName:             modelName,
 	}
@@ -224,14 +265,65 @@ func (r *Runner) ModelsLocator() ModelsLister { //nolint:ireturn
 }
 
 func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
-	if params.Model == "" {
+	profileName := strings.TrimSpace(params.ProfileName)
+	modelName := strings.TrimSpace(params.Model)
+	if profileName != "" {
+		if r.profileRuns == nil {
+			return nil, &profileexec.Error{
+				Kind: profileexec.ErrorKindExecution,
+				Op:   "dispatch-profile",
+				Err:  errors.New("profile execution unavailable"),
+			}
+		}
+
+		return r.profileRuns.Run(ctx, profileexec.RunRequest{
+			ProfileName: profileName,
+			Model:       modelName,
+			UserID:      params.UserID,
+			SessionID:   params.SessionID,
+			Message:     params.Message,
+		})
+	}
+
+	if modelName == "" {
 		return nil, errors.New("model is required")
 	}
-	ar, err := r.runnerFactory.NewAgentRunner(ctx, r.newAgentRunnerParams(params.Model))
+	ar, err := r.runnerFactory.NewAgentRunner(
+		ctx,
+		r.newAgentRunnerParams(modelName, defaultRunnerAgentName, ""),
+	)
 	if err != nil {
 		return nil, err
 	}
 	return ar.Run(ctx, params)
+}
+
+type runnerProfileRegularRunner struct {
+	runner *Runner
+}
+
+func (r *runnerProfileRegularRunner) RunRegularProfile(
+	ctx context.Context,
+	request profileexec.RegularRunRequest,
+) (*RunResult, error) {
+	ar, err := r.runner.runnerFactory.NewAgentRunner(
+		ctx,
+		r.runner.newAgentRunnerParams(
+			request.Model,
+			request.AgentName,
+			request.ProfileInstructions,
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return ar.Run(ctx, RunParams{
+		UserID:    request.UserID,
+		SessionID: request.SessionID,
+		Message:   request.Message,
+		Model:     request.Model,
+	})
 }
 
 // ReadSession reads the events for a session from the configured session service.

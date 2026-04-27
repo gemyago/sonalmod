@@ -28,7 +28,6 @@ type ModelsLister interface {
 //nolint:revive // name is fixed by API plan (agent-api-start-handler); stutter with package agentapi is intentional.
 type AgentAPIServer struct {
 	runner       agent.AgentRunner
-	profileRuns  agent.ProfileRunDispatcher
 	logger       *slog.Logger
 	idGen        IDGen
 	reqMap       *AgentAPIRequestMapper
@@ -66,7 +65,6 @@ type ServerParams struct {
 	RequestMapper          *AgentAPIRequestMapper
 	SSEWriter              *AgentAPISSEWriter
 	ProvidersConfigService lp.ProvidersConfigService
-	ProfileRunDispatcher   agent.ProfileRunDispatcher
 	AgentProfilesService   ap.AgentProfilesService
 	// ModelsLister is optional; when nil, ListModels returns an empty list.
 	ModelsLister ModelsLister
@@ -76,7 +74,6 @@ type ServerParams struct {
 func NewAgentAPIServer(p ServerParams) *AgentAPIServer {
 	return &AgentAPIServer{
 		runner:       p.Runner,
-		profileRuns:  p.ProfileRunDispatcher,
 		logger:       p.Logger,
 		idGen:        p.IDGen,
 		reqMap:       p.RequestMapper,
@@ -235,29 +232,12 @@ func (s *AgentAPIServer) runAgentRequest(
 	in agentRunRequestInput,
 	sessionID string,
 ) (*rt.RunResult, error) {
-	if in.ProfileName == "" {
-		return s.runner.Run(ctx, rt.RunParams{
-			UserID:    in.UserID,
-			SessionID: sessionID,
-			Message:   in.Message,
-			Model:     in.Model,
-		})
-	}
-
-	if s.profileRuns == nil {
-		return nil, &profileexec.Error{
-			Kind: profileexec.ErrorKindExecution,
-			Op:   "dispatch-profile",
-			Err:  errors.New("profile execution unavailable"),
-		}
-	}
-
-	return s.profileRuns.Run(ctx, agent.ProfileRunRequest{
-		ProfileName: in.ProfileName,
-		Model:       in.Model,
+	return s.runner.Run(ctx, rt.RunParams{
 		UserID:      in.UserID,
 		SessionID:   sessionID,
 		Message:     in.Message,
+		Model:       in.Model,
+		ProfileName: in.ProfileName,
 	})
 }
 

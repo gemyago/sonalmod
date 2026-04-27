@@ -28,17 +28,10 @@ func TestHandler(t *testing.T) {
 		require.NoError(t, err)
 		return svc
 	}
-	newTestProfileRunDispatcher := func(t *testing.T) agent.ProfileRunDispatcher {
-		t.Helper()
-		dispatcher, err := agent.NewProfileRunDispatcher(newTestProfilesService(t), newTestRunner(t))
-		require.NoError(t, err)
-		return dispatcher
-	}
 
 	t.Run("creates handler", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   newTestProfileRunDispatcher(t),
 			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
 			AgentProfilesService:   newTestProfilesService(t),
 		}, WithLogger(rootTestLogger))
@@ -57,7 +50,6 @@ func TestHandler(t *testing.T) {
 	t.Run("returns error if ProvidersConfigService is nil", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   newTestProfileRunDispatcher(t),
 			ProvidersConfigService: nil,
 			AgentProfilesService:   newTestProfilesService(t),
 		}, WithLogger(rootTestLogger))
@@ -68,7 +60,6 @@ func TestHandler(t *testing.T) {
 	t.Run("returns error if AgentProfilesService is nil", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   newTestProfileRunDispatcher(t),
 			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
 			AgentProfilesService:   nil,
 		}, WithLogger(rootTestLogger))
@@ -79,22 +70,10 @@ func TestHandler(t *testing.T) {
 	t.Run("creates handler with non-nil services", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   newTestProfileRunDispatcher(t),
 			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
 			AgentProfilesService:   newTestProfilesService(t),
 		}, WithLogger(rootTestLogger))
 		require.NoError(t, err)
 		require.NotNil(t, handler)
-	})
-
-	t.Run("returns error if ProfileRunDispatcher is nil", func(t *testing.T) {
-		handler, err := NewHandler(HandlerArgs{
-			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   nil,
-			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-			AgentProfilesService:   newTestProfilesService(t),
-		}, WithLogger(rootTestLogger))
-		require.ErrorContains(t, err, "profile run dispatcher is required")
-		assert.Nil(t, handler)
 	})
 }

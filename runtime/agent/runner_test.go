@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gemyago/sonalmod/runtime/internal"
+	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
@@ -230,6 +231,22 @@ func TestRunner(t *testing.T) {
 			require.ErrorContains(t, err, "model is required")
 		})
 
+		t.Run("returns error when profileName is provided but profile execution is not configured", func(t *testing.T) {
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			_, err = runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Word()}}},
+				ProfileName: "profile-" + fake.Lorem().Word(),
+			})
+			require.Error(t, err)
+			require.ErrorContains(t, err, "profile execution unavailable")
+		})
+
 		t.Run("resolves model via ModelsLocator when ProvidersConfigService is set", func(t *testing.T) {
 			providerName := fake.Lorem().Word()
 			modelName := fake.Lorem().Word()
@@ -257,6 +274,79 @@ func TestRunner(t *testing.T) {
 				UserID:    userID,
 				SessionID: sessionID,
 				Message:   msg,
+				Model:     fqModel,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+		})
+
+		t.Run("profileName dispatches through runner-owned profile execution", func(t *testing.T) {
+			providerName := fake.Lorem().Word()
+			modelName := fake.Lorem().Word()
+			fqModel := providerName + "/" + modelName
+			profileName := "profile-" + fake.Lorem().Word()
+
+			providersSvc := lp.NewMockProvidersConfigService(t)
+			providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
+				Name:   providerName,
+				APIKey: fake.Lorem().Word(),
+			}, nil)
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name:         profileName,
+						Instructions: fake.Lorem().Sentence(4),
+						ExecutionSettings: ap.ExecutionSettings{
+							DefaultModel: fqModel,
+						},
+					}, nil
+				},
+			}
+
+			fakeG := internal.NewFakeGenkitInstance()
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   profilesSvc,
+				genkitInitFunc:         fakeG.InitFunc(),
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, err := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+		})
+
+		t.Run("tools registry path still resolves model and runs", func(t *testing.T) {
+			providerName := fake.Lorem().Word()
+			modelName := fake.Lorem().Word()
+			fqModel := providerName + "/" + modelName
+
+			providersSvc := lp.NewMockProvidersConfigService(t)
+			providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
+				Name:   providerName,
+				APIKey: fake.Lorem().Word(),
+			}, nil)
+
+			fakeG := internal.NewFakeGenkitInstance()
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				genkitInitFunc:         fakeG.InitFunc(),
+			},
+				WithLogger(rootTestLogger),
+				WithToolsRegistry(NewToolsRegistry()),
+			)
+			require.NoError(t, err)
+
+			result, err := runner.Run(t.Context(), RunParams{
+				UserID:    fake.UUID().V4(),
+				SessionID: fake.UUID().V4(),
+				Message:   &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 				Model:     fqModel,
 			})
 			require.NoError(t, err)
@@ -494,6 +584,13 @@ func TestRunner(t *testing.T) {
 			assert.Equal(t, 1, result.Total)
 		})
 	})
+
+	t.Run("ModelsLocator", func(t *testing.T) {
+		t.Run("returns nil when unset", func(t *testing.T) {
+			r := &Runner{}
+			assert.Nil(t, r.ModelsLocator())
+		})
+	})
 }
 
 func newSessionEvent(invocationID, text string) *session.Event {
@@ -524,4 +621,36 @@ func (m *fakeModel) GenerateContent(
 			},
 		}, nil)
 	}
+}
+
+type stubProfilesService struct {
+	get func(ctx context.Context, name string) (*ap.AgentProfile, error)
+}
+
+func (s *stubProfilesService) List(context.Context) ([]ap.AgentProfile, error) {
+	panic("unexpected List call")
+}
+
+func (s *stubProfilesService) Get(ctx context.Context, name string) (*ap.AgentProfile, error) {
+	return s.get(ctx, name)
+}
+
+func (s *stubProfilesService) Create(context.Context, ap.CreateAgentProfileParams) (*ap.AgentProfile, error) {
+	panic("unexpected Create call")
+}
+
+func (s *stubProfilesService) Update(
+	context.Context,
+	string,
+	ap.UpdateAgentProfileParams,
+) (*ap.AgentProfile, error) {
+	panic("unexpected Update call")
+}
+
+func (s *stubProfilesService) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
+}
+
+func (s *stubProfilesService) AutoMigrate() error {
+	panic("unexpected AutoMigrate call")
 }

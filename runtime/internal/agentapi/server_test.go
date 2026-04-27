@@ -39,6 +39,7 @@ type fakeCallerIdentity struct{ userID string }
 
 func (f *fakeCallerIdentity) UserID() string { return f.userID }
 
+//nolint:gocyclo,cyclop // integration-style handler coverage keeps scenarios together.
 func TestAgentAPIServer(t *testing.T) {
 	newTestAgentAPIServerWithProfiles := func(
 		t *testing.T,
@@ -52,13 +53,6 @@ func TestAgentAPIServer(t *testing.T) {
 			profilesSvc = &mockAgentProfilesService{}
 		}
 
-		var profileRunDispatcher agent.ProfileRunDispatcher
-		if runner != nil {
-			dispatcher, err := agent.NewProfileRunDispatcher(profilesSvc, runner)
-			require.NoError(t, err)
-			profileRunDispatcher = dispatcher
-		}
-
 		return NewAgentAPIServer(ServerParams{
 			Runner:                 runner,
 			Logger:                 log,
@@ -66,31 +60,12 @@ func TestAgentAPIServer(t *testing.T) {
 			RequestMapper:          NewAgentAPIRequestMapper(),
 			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
-			ProfileRunDispatcher:   profileRunDispatcher,
 			AgentProfilesService:   profilesSvc,
 		})
 	}
 	newTestAgentAPIServer := func(t *testing.T, runner agent.AgentRunner, gen IDGen) *AgentAPIServer {
 		t.Helper()
 		return newTestAgentAPIServerWithProfiles(t, runner, gen, nil)
-	}
-	newTestAgentAPIServerWithDispatcher := func(
-		t *testing.T,
-		dispatcher agent.ProfileRunDispatcher,
-		gen IDGen,
-	) *AgentAPIServer {
-		t.Helper()
-
-		log := slog.New(slog.NewTextHandler(io.Discard, nil))
-		return NewAgentAPIServer(ServerParams{
-			Logger:                 log,
-			IDGen:                  gen,
-			RequestMapper:          NewAgentAPIRequestMapper(),
-			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
-			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
-			ProfileRunDispatcher:   dispatcher,
-			AgentProfilesService:   &mockAgentProfilesService{},
-		})
 	}
 	newACPProfileServer := func(
 		t *testing.T,
@@ -103,7 +78,10 @@ func TestAgentAPIServer(t *testing.T) {
 		providersSvc := llmproviders.NewMockProvidersConfigService(t)
 		providersSvc.EXPECT().List(mock.Anything).Return([]llmproviders.ProviderConfig{}, nil).Maybe()
 		runner, err := agent.NewRunner(
-			agent.RunnerArgs{ProvidersConfigService: providersSvc},
+			agent.RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   profilesSvc,
+			},
 			agent.WithLogger(log),
 		)
 		require.NoError(t, err)
@@ -135,15 +113,6 @@ func TestAgentAPIServer(t *testing.T) {
 			}
 		}
 
-		makeRegularProfile := func(name, defaultModel string) *ap.AgentProfile {
-			return &ap.AgentProfile{
-				Name: name,
-				ExecutionSettings: ap.ExecutionSettings{
-					DefaultModel: defaultModel,
-				},
-			}
-		}
-
 		t.Run("success_SSE_sessionBound_and_done", func(t *testing.T) {
 			t.Parallel()
 
@@ -151,25 +120,20 @@ func TestAgentAPIServer(t *testing.T) {
 			userID := fake.Internet().User()
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
 
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
 
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
 				return p.UserID == userID &&
 					p.SessionID == expSID &&
 					p.Message != nil &&
-					p.Model == profileModel
+					p.Model == "" &&
+					p.ProfileName == profileName
 			})).Return(fakeRunResult(expSID, nil), nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, m, gen)
 
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
@@ -200,15 +164,9 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			chunk := fake.Lorem().Word()
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
 
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
 
 			ev := session.NewEvent(fake.UUID().V4())
 			ev.Content = &genai.Content{Parts: []*genai.Part{{Text: chunk}}}
@@ -216,10 +174,13 @@ func TestAgentAPIServer(t *testing.T) {
 
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
-				return p.UserID == userID && p.SessionID == expSID && p.Model == profileModel
+				return p.UserID == userID &&
+					p.SessionID == expSID &&
+					p.Model == "" &&
+					p.ProfileName == profileName
 			})).Return(fakeRunResult(expSID, []*session.Event{ev}), nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -314,18 +275,12 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			runErr := errors.New(fake.Lorem().Sentence(4))
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
 
 			gen := NewMockIDGen()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, runErr)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -348,18 +303,12 @@ func TestAgentAPIServer(t *testing.T) {
 			userID := fake.Internet().User()
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
 
 			gen := NewMockIDGen()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -436,24 +385,18 @@ func TestAgentAPIServer(t *testing.T) {
 			userID := fake.Internet().User()
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
 
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					DefaultModel: profileModel,
-				},
-			}, nil)
-
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
-				return p.UserID == userID && p.SessionID == expSID && p.Model == profileModel
+				return p.UserID == userID &&
+					p.SessionID == expSID &&
+					p.Model == "" &&
+					p.ProfileName == profileName
 			})).Return(fakeRunResult(expSID, nil), nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -504,24 +447,18 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
 			overrideModel := "myprovider/" + fake.Lorem().Word()
-			profileModel := "otherprovider/" + fake.Lorem().Word()
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
 
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					DefaultModel: profileModel,
-				},
-			}, nil)
-
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
-				return p.UserID == userID && p.SessionID == expSID && p.Model == overrideModel
+				return p.UserID == userID &&
+					p.SessionID == expSID &&
+					p.Model == overrideModel &&
+					p.ProfileName == profileName
 			})).Return(fakeRunResult(expSID, nil), nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -540,31 +477,6 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, rec.Body.String(), "sessionBound")
 		})
 
-		t.Run("profileName_without_dispatcher_returns_500", func(t *testing.T) {
-			t.Parallel()
-
-			fake := faker.New()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			profileName := "profile-" + fake.Lorem().Word()
-
-			srv := newTestAgentAPIServerWithDispatcher(t, nil, NewMockIDGen())
-			mux := http.NewServeMux()
-			h := HandlerFromMux(srv, mux)
-
-			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusInternalServerError, rec.Code)
-			var pd ProblemDetails
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
-			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, "agent run failed")
-		})
-
 		t.Run("unknown_profileName_returns_404", func(t *testing.T) {
 			t.Parallel()
 
@@ -573,11 +485,13 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
 
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(nil, ap.ErrAgentProfileNotFound).Once()
-
 			m := agent.NewMockAgentRunner(t)
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profileexec.Error{
+				Kind: profileexec.ErrorKindNotFound,
+				Op:   "load-profile",
+				Err:  ap.ErrAgentProfileNotFound,
+			})
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -605,23 +519,21 @@ func TestAgentAPIServer(t *testing.T) {
 
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
-
-			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
-				run: func(_ context.Context, req agent.ProfileRunRequest) (*agent.RunResult, error) {
-					assert.Equal(t, profileName, req.ProfileName)
-					assert.Equal(t, userID, req.UserID)
-					assert.Equal(t, expSID, req.SessionID)
-					return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
-						_ = yield(&rt.SessionEvent{
-							TurnComplete: true,
-							Content: &rt.SessionEventContent{
-								Role:  "model",
-								Parts: []rt.SessionEventPart{{Text: agentText}},
-							},
-						}, nil)
-					}, expSID), nil
-				},
-			}, gen)
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.ProfileName == profileName &&
+					p.UserID == userID &&
+					p.SessionID == expSID
+			})).Return(rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+				_ = yield(&rt.SessionEvent{
+					TurnComplete: true,
+					Content: &rt.SessionEventContent{
+						Role:  "model",
+						Parts: []rt.SessionEventPart{{Text: agentText}},
+					},
+				}, nil)
+			}, expSID), nil)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -651,24 +563,22 @@ func TestAgentAPIServer(t *testing.T) {
 
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
-
-			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
-				run: func(_ context.Context, req agent.ProfileRunRequest) (*agent.RunResult, error) {
-					assert.Equal(t, profileName, req.ProfileName)
-					assert.Equal(t, overrideModel, req.Model)
-					assert.Equal(t, userID, req.UserID)
-					assert.Equal(t, expSID, req.SessionID)
-					return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
-						_ = yield(&rt.SessionEvent{
-							TurnComplete: true,
-							Content: &rt.SessionEventContent{
-								Role:  "model",
-								Parts: []rt.SessionEventPart{{Text: agentText}},
-							},
-						}, nil)
-					}, expSID), nil
-				},
-			}, gen)
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.ProfileName == profileName &&
+					p.Model == overrideModel &&
+					p.UserID == userID &&
+					p.SessionID == expSID
+			})).Return(rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+				_ = yield(&rt.SessionEvent{
+					TurnComplete: true,
+					Content: &rt.SessionEventContent{
+						Role:  "model",
+						Parts: []rt.SessionEventPart{{Text: agentText}},
+					},
+				}, nil)
+			}, expSID), nil)
+			srv := newTestAgentAPIServer(t, m, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -807,8 +717,7 @@ func TestAgentAPIServer(t *testing.T) {
 			ctx := t.Context()
 			userID := fake.Internet().User()
 			msg := fake.Lorem().Sentence(3)
-			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
+			modelName := "myprovider/" + fake.Lorem().Word()
 
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
@@ -840,17 +749,12 @@ func TestAgentAPIServer(t *testing.T) {
 				Runner: ar,
 				Logger: log,
 			})
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
-			srv := newTestAgentAPIServerWithProfiles(t, bgRunner, gen, profilesSvc)
+			srv := newTestAgentAPIServer(t, bgRunner, gen)
 
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
-			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			body := fmt.Sprintf(`{"model":%q,"message":{"parts":[{"text":%q}]}}`, modelName, msg)
 			reqCtx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
 			req := httptest.NewRequestWithContext(reqCtx, http.MethodPost, "/agent-runs", strings.NewReader(body))
 			rec := httptest.NewRecorder()
@@ -1074,15 +978,6 @@ func TestAgentAPIServer(t *testing.T) {
 			return httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
 		}
 
-		makeRegularProfile := func(name, defaultModel string) *ap.AgentProfile {
-			return &ap.AgentProfile{
-				Name: name,
-				ExecutionSettings: ap.ExecutionSettings{
-					DefaultModel: defaultModel,
-				},
-			}
-		}
-
 		t.Run("success_SSE_sessionBound_and_done", func(t *testing.T) {
 			t.Parallel()
 
@@ -1091,22 +986,16 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			sessPath := fake.UUID().V4()
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
-
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
 				return p.UserID == userID &&
 					p.SessionID == sessPath &&
 					p.Message != nil &&
-					p.Model == profileModel
+					p.Model == "" &&
+					p.ProfileName == profileName
 			})).Return(fakeRunResult(sessPath, nil), nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1183,15 +1072,8 @@ func TestAgentAPIServer(t *testing.T) {
 			userID := fake.Internet().User()
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
-
 			m := agent.NewMockAgentRunner(t)
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1216,17 +1098,10 @@ func TestAgentAPIServer(t *testing.T) {
 			sessPath := fake.UUID().V4()
 			runErr := errors.New(fake.Lorem().Sentence(4))
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(
-				makeRegularProfile(profileName, profileModel),
-				nil,
-			).Once()
-
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, runErr)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1307,21 +1182,15 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			sessPath := fake.UUID().V4()
 			profileName := "profile-" + fake.Lorem().Word()
-			profileModel := "myprovider/" + fake.Lorem().Word()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					DefaultModel: profileModel,
-				},
-			}, nil)
-
 			m := agent.NewMockAgentRunner(t)
 			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
-				return p.UserID == userID && p.SessionID == sessPath && p.Model == profileModel
+				return p.UserID == userID &&
+					p.SessionID == sessPath &&
+					p.Model == "" &&
+					p.ProfileName == profileName
 			})).Return(fakeRunResult(sessPath, nil), nil)
 
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1374,11 +1243,13 @@ func TestAgentAPIServer(t *testing.T) {
 			sessPath := fake.UUID().V4()
 			profileName := "profile-" + fake.Lorem().Word()
 
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(nil, ap.ErrAgentProfileNotFound).Once()
-
 			m := agent.NewMockAgentRunner(t)
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profileexec.Error{
+				Kind: profileexec.ErrorKindNotFound,
+				Op:   "load-profile",
+				Err:  ap.ErrAgentProfileNotFound,
+			})
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1405,19 +1276,16 @@ func TestAgentAPIServer(t *testing.T) {
 			profileName := "profile-" + fake.Lorem().Word()
 			streamErr := fake.Lorem().Sentence(4)
 
-			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
-				run: func(_ context.Context, req agent.ProfileRunRequest) (*agent.RunResult, error) {
-					assert.Equal(t, profileName, req.ProfileName)
-					assert.Equal(t, userID, req.UserID)
-					assert.Equal(t, sessPath, req.SessionID)
-					return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
-						_ = yield(&rt.SessionEvent{
-							ErrorCode:    "acp-stdio-protocol",
-							ErrorMessage: streamErr,
-						}, nil)
-					}, sessPath), nil
-				},
-			}, NewMockIDGen())
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.ProfileName == profileName && p.UserID == userID && p.SessionID == sessPath
+			})).Return(rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+				_ = yield(&rt.SessionEvent{
+					ErrorCode:    "acp-stdio-protocol",
+					ErrorMessage: streamErr,
+				}, nil)
+			}, sessPath), nil)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1494,15 +1362,13 @@ func TestAgentAPIServer(t *testing.T) {
 			sessPath := fake.UUID().V4()
 			profileName := "profile-" + fake.Lorem().Word()
 
-			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
-				run: func(context.Context, agent.ProfileRunRequest) (*agent.RunResult, error) {
-					return nil, &profileexec.Error{
-						Kind: profileexec.ErrorKindUnsupported,
-						Op:   "dispatch-profile",
-						Err:  errors.New("unsupported profile"),
-					}
-				},
-			}, NewMockIDGen())
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profileexec.Error{
+				Kind: profileexec.ErrorKindUnsupported,
+				Op:   "dispatch-profile",
+				Err:  errors.New("unsupported profile"),
+			})
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1578,17 +1444,6 @@ func TestAgentAPIServer(t *testing.T) {
 
 // smokeIntegrationFakeLLM implements model.LLM for wiring *AgentRunner through HTTP without a live LLM (same pattern as internal/agentrun_test.go fakeModel).
 type smokeIntegrationFakeLLM struct{ name string }
-
-type stubProfileRunDispatcher struct {
-	run func(ctx context.Context, request agent.ProfileRunRequest) (*agent.RunResult, error)
-}
-
-func (d stubProfileRunDispatcher) Run(
-	ctx context.Context,
-	request agent.ProfileRunRequest,
-) (*agent.RunResult, error) {
-	return d.run(ctx, request)
-}
 
 func (m *smokeIntegrationFakeLLM) Name() string {
 	if m.name != "" {

@@ -14,8 +14,6 @@ import (
 type HandlerArgs struct {
 	// Runner is typically a [*agent.Runner].
 	Runner agent.AgentRunner
-	// ProfileRunDispatcher is required.
-	ProfileRunDispatcher agent.ProfileRunDispatcher
 
 	// ProvidersConfigService is required.
 	ProvidersConfigService agent.ProvidersConfigService
@@ -44,9 +42,6 @@ func NewHandler(args HandlerArgs, opts ...HandlerOpt) (http.Handler, error) {
 	if args.Runner == nil {
 		return nil, errors.New("runner is required")
 	}
-	if args.ProfileRunDispatcher == nil {
-		return nil, errors.New("profile run dispatcher is required")
-	}
 	if args.ProvidersConfigService == nil {
 		return nil, errors.New("providers config service is required")
 	}
@@ -67,7 +62,6 @@ func NewHandler(args HandlerArgs, opts ...HandlerOpt) (http.Handler, error) {
 	})
 	server := agentapi.NewAgentAPIServer(agentapi.ServerParams{
 		Runner:                 agentRunner,
-		ProfileRunDispatcher:   args.ProfileRunDispatcher,
 		Logger:                 hOpts.Logger.WithGroup("sonalmod.runtime.httpapi.handler"),
 		IDGen:                  agentapi.NewDefaultIDGen(),
 		RequestMapper:          agentapi.NewAgentAPIRequestMapper(),

@@ -11,9 +11,9 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 2. Internalize Profile Dispatch
 
-- [ ] 2.1 Extend runner-owned run execution so selected regular profiles apply profile `name`, profile `instructions`, and effective model resolution internally, while `role` and `toolRefs` remain unchanged.
-- [ ] 2.2 Remove exported `agent.ProfileRunDispatcher` and `agent.NewProfileRunDispatcher`, move profile-aware standard-run composition behind `agent.Runner` / runner-owned internals, and update `runtime/httpapi` / `runtime/internal/agentapi` tests so public handler construction no longer depends on a dispatcher argument.
-- [ ] 2.3 Update bundled backend wiring in `apps/sonalmod` and any runner-owned runtime helpers so public consumers pass only the runner plus existing services while internal profile execution still supports ACP stdio session persistence.
+- [x] 2.1 Extend runner-owned run execution so selected regular profiles apply profile `name`, profile `instructions`, and effective model resolution internally, while `role` and `toolRefs` remain unchanged.
+- [x] 2.2 Remove exported `agent.ProfileRunDispatcher` and `agent.NewProfileRunDispatcher`, move profile-aware standard-run composition behind `agent.Runner` / runner-owned internals, and update `runtime/httpapi` / `runtime/internal/agentapi` tests so public handler construction no longer depends on a dispatcher argument.
+- [x] 2.3 Update bundled backend wiring in `apps/sonalmod` and any runner-owned runtime helpers so public consumers pass only the runner plus existing services while internal profile execution still supports ACP stdio session persistence.
 
 ## 3. Undo UI Contract Drift
 

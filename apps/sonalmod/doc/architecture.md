@@ -29,7 +29,7 @@ HTTP server and CLI entrypoint for Sonalmod under `apps/sonalmod`: a single **`s
 
 - **`main.go`** / **`cli.go`** — Cobra commands, process lifecycle, **`internal.Setup`** before subcommands run.
 - **`internal/wireup.go`** — loads config, registers DI (ident, shutdown hooks, **`NewRuntime`**, config providers, telemetry, app, infrastructure).
-- **`internal/runtime.go`** — constructs **`agent.Runner`** (LLM provider, **`workspacefs`** tools, filesystem storage under configurable data dir), builds **`agent.NewProfileRunDispatcher`** from the runner plus persisted agent profiles, and exposes **`httpapi`** as **`HTTPHandler`**.
+- **`internal/runtime.go`** — constructs **`agent.Runner`** (LLM provider, **`workspacefs`** tools, filesystem storage under configurable data dir, and persisted agent profile service for runner-owned profile dispatch) and exposes **`httpapi`** as **`HTTPHandler`**.
 - **`internal/api/http/`** — HTTP composition: **`server/`** (router, HTTPServer, middleware chain), **`v1routes/`** (generated routes + handlers, e.g. health), **`v1controllers/`**, **`middleware/`**.
 - **`internal/config/`** — **`default.yaml`** plus per-env **`local.yaml`**, **`test.yaml`**, **`production.yaml`**; optional **`*-user.yaml`** overrides.
 - **`internal/telemetry/`** — slog, OTEL resource, HTTP middleware, pprof helper.

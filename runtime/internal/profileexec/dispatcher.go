@@ -12,7 +12,7 @@ import (
 )
 
 type regularRunner interface {
-	Run(ctx context.Context, params rt.RunParams) (*rt.RunResult, error)
+	RunRegularProfile(ctx context.Context, request RegularRunRequest) (*rt.RunResult, error)
 }
 
 type acpExecutor interface {
@@ -55,6 +55,16 @@ type RunRequest struct {
 	UserID      string
 	SessionID   string
 	Message     *rt.MessageContent
+}
+
+// RegularRunRequest is a resolved built-in run derived from a selected regular profile.
+type RegularRunRequest struct {
+	UserID              string
+	SessionID           string
+	Message             *rt.MessageContent
+	Model               string
+	AgentName           string
+	ProfileInstructions string
 }
 
 // Dispatcher resolves agent profiles and dispatches their execution mode.
@@ -134,11 +144,13 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 			modelName = override
 		}
 
-		result, runErr := d.regularRunner.Run(ctx, rt.RunParams{
-			UserID:    request.UserID,
-			SessionID: request.SessionID,
-			Message:   request.Message,
-			Model:     modelName,
+		result, runErr := d.regularRunner.RunRegularProfile(ctx, RegularRunRequest{
+			UserID:              request.UserID,
+			SessionID:           request.SessionID,
+			Message:             request.Message,
+			Model:               modelName,
+			AgentName:           profile.Name,
+			ProfileInstructions: profile.Instructions,
 		})
 		if runErr != nil {
 			return nil, wrapError(

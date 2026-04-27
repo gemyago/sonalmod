@@ -52,11 +52,14 @@ func (s *testProfilesService) AutoMigrate() error {
 }
 
 type testRegularRunner struct {
-	run func(ctx context.Context, params rt.RunParams) (*rt.RunResult, error)
+	run func(ctx context.Context, request RegularRunRequest) (*rt.RunResult, error)
 }
 
-func (r *testRegularRunner) Run(ctx context.Context, params rt.RunParams) (*rt.RunResult, error) {
-	return r.run(ctx, params)
+func (r *testRegularRunner) RunRegularProfile(
+	ctx context.Context,
+	request RegularRunRequest,
+) (*rt.RunResult, error) {
+	return r.run(ctx, request)
 }
 
 type testACPExecutor struct {
@@ -150,11 +153,12 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(_ context.Context, params rt.RunParams) (*rt.RunResult, error) {
-					assert.Equal(t, request.UserID, params.UserID)
-					assert.Equal(t, request.SessionID, params.SessionID)
-					assert.Equal(t, request.Message, params.Message)
-					assert.Equal(t, modelName, params.Model)
+				run: func(_ context.Context, got RegularRunRequest) (*rt.RunResult, error) {
+					assert.Equal(t, request.UserID, got.UserID)
+					assert.Equal(t, request.SessionID, got.SessionID)
+					assert.Equal(t, request.Message, got.Message)
+					assert.Equal(t, modelName, got.Model)
+					assert.Equal(t, request.ProfileName, got.AgentName)
 					return expectedResult, nil
 				},
 			},
@@ -187,8 +191,8 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(_ context.Context, params rt.RunParams) (*rt.RunResult, error) {
-					assert.Equal(t, modelName, params.Model)
+				run: func(_ context.Context, got RegularRunRequest) (*rt.RunResult, error) {
+					assert.Equal(t, modelName, got.Model)
 					return expectedResult, nil
 				},
 			},
@@ -222,8 +226,8 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(_ context.Context, params rt.RunParams) (*rt.RunResult, error) {
-					assert.Equal(t, request.Model, params.Model)
+				run: func(_ context.Context, got RegularRunRequest) (*rt.RunResult, error) {
+					assert.Equal(t, request.Model, got.Model)
 					return expectedResult, nil
 				},
 			},
@@ -247,7 +251,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},
@@ -276,7 +280,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},
@@ -307,7 +311,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},
@@ -356,7 +360,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},
@@ -440,7 +444,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},
@@ -483,7 +487,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},
@@ -520,7 +524,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					return nil, expectedErr
 				},
 			},
@@ -565,7 +569,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testRegularRunner{
-				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
 					panic("Run should not be called")
 				},
 			},

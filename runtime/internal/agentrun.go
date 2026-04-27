@@ -189,6 +189,9 @@ type RunParams struct {
 	SessionID string
 	Message   *MessageContent
 	Model     string // fully qualified: "provider/model-name"
+	// ProfileName selects a saved profile for profile-backed execution.
+	// Empty means direct built-in execution using Model.
+	ProfileName string
 }
 
 func (a *AgentRunner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
@@ -313,6 +316,8 @@ func sliceToIter(events []*SessionEvent) iter.Seq2[*SessionEvent, error] {
 }
 
 // RunExecutorFactoryFromRunner adapts [runner.New] to [LLMAgentRunnerRunFactory].
+//
+//nolint:ireturn // adapter intentionally returns LLMRunner interface.
 func RunExecutorFactoryFromRunner(
 	cfg runner.Config,
 ) (LLMRunner, error) {

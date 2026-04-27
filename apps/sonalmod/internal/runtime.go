@@ -193,16 +193,12 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 	runner, err := agent.NewRunner(
 		agent.RunnerArgs{
 			ProvidersConfigService: services.providersConfigSvc,
+			AgentProfilesService:   services.agentProfilesSvc,
 		},
 		runnerOpts...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create agent runner: %w", err)
-	}
-
-	profileRunDispatcher, err := agent.NewProfileRunDispatcher(services.agentProfilesSvc, runner)
-	if err != nil {
-		return nil, fmt.Errorf("create profile run dispatcher: %w", err)
 	}
 
 	if deps.AgentRuntimeStorageType == storageTypeDatabase && deps.AgentRuntimeDatabaseAutoMigrate {
@@ -216,7 +212,6 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 
 	httpHandler, err := httpapi.NewHandler(httpapi.HandlerArgs{
 		Runner:                 runner,
-		ProfileRunDispatcher:   profileRunDispatcher,
 		ProvidersConfigService: services.providersConfigSvc,
 		AgentProfilesService:   services.agentProfilesSvc,
 		ModelsLister:           runner.ModelsLocator(),
