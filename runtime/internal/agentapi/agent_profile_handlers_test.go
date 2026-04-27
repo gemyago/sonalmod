@@ -134,6 +134,98 @@ func TestAgentProfileHandlers(t *testing.T) {
 		}
 	}
 
+	mustJSON := func(t *testing.T, value any) string {
+		t.Helper()
+		payload, err := json.Marshal(value)
+		require.NoError(t, err)
+		return string(payload)
+	}
+
+	makeRegularExecutionSettings := func(
+		t *testing.T,
+		defaultModel string,
+		includeMode bool,
+	) AgentProfileExecutionSettings {
+		t.Helper()
+
+		settings := AgentProfileRegularExecutionSettings{
+			DefaultModel: defaultModel,
+		}
+		if includeMode {
+			mode := Regular
+			settings.Mode = &mode
+		}
+
+		var union AgentProfileExecutionSettings
+		require.NoError(t, union.FromAgentProfileRegularExecutionSettings(settings))
+		return union
+	}
+
+	makeACPExecutionSettings := func(
+		t *testing.T,
+		command string,
+		args []string,
+		cwd string,
+	) AgentProfileExecutionSettings {
+		t.Helper()
+
+		settings := AgentProfileACPStdioExecutionSettings{
+			Mode: "acp-stdio",
+			AgentCommand: ACPStdioAgentCommand{
+				Command: command,
+			},
+		}
+		if len(args) > 0 {
+			settings.AgentCommand.Args = &args
+		}
+		if cwd != "" {
+			settings.Cwd = &cwd
+		}
+
+		var union AgentProfileExecutionSettings
+		require.NoError(t, union.FromAgentProfileACPStdioExecutionSettings(settings))
+		return union
+	}
+
+	decodeProfileResponse := func(t *testing.T, body io.Reader) AgentProfileResponse {
+		t.Helper()
+
+		var resp AgentProfileResponse
+		require.NoError(t, json.NewDecoder(body).Decode(&resp))
+		return resp
+	}
+
+	assertRegularExecutionSettings := func(
+		t *testing.T,
+		settings AgentProfileExecutionSettings,
+		expectedMode *AgentProfileRegularExecutionSettingsMode,
+		expectedDefaultModel string,
+	) {
+		t.Helper()
+
+		regularSettings, err := settings.AsAgentProfileRegularExecutionSettings()
+		require.NoError(t, err)
+		assert.Equal(t, expectedDefaultModel, regularSettings.DefaultModel)
+		assert.Equal(t, expectedMode, regularSettings.Mode)
+	}
+
+	assertACPExecutionSettings := func(
+		t *testing.T,
+		settings AgentProfileExecutionSettings,
+		expectedCommand string,
+		expectedArgs []string,
+		expectedCwd *string,
+	) {
+		t.Helper()
+
+		acpSettings, err := settings.AsAgentProfileACPStdioExecutionSettings()
+		require.NoError(t, err)
+		assert.Equal(t, "acp-stdio", acpSettings.Mode)
+		assert.Equal(t, expectedCommand, acpSettings.AgentCommand.Command)
+		assert.Equal(t, expectedArgs, stringSliceValue(acpSettings.AgentCommand.Args))
+		assert.Equal(t, expectedCwd, acpSettings.Cwd)
+	}
+
 	t.Run("ListAgentProfiles", func(t *testing.T) {
 		t.Parallel()
 
@@ -193,9 +285,18 @@ func TestAgentProfileHandlers(t *testing.T) {
 			}).Return(&profile, nil)
 
 			h := newServerWithSvc(t, svc)
-			body := `{"name":"` + profile.Name + `","displayName":"` + profile.DisplayName + `","role":"` +
-				profile.Role + `","instructions":"` + profile.Instructions + `","toolRefs":["tool-a","tool-b"],` +
-				`"executionSettings":{"defaultModel":"` + profile.ExecutionSettings.DefaultModel + `"}}`
+			body := mustJSON(t, CreateAgentProfileRequest{
+				Name:         profile.Name,
+				DisplayName:  &profile.DisplayName,
+				Role:         profile.Role,
+				Instructions: profile.Instructions,
+				ToolRefs:     &profile.ToolRefs,
+				ExecutionSettings: makeRegularExecutionSettings(
+					t,
+					profile.ExecutionSettings.DefaultModel,
+					false,
+				),
+			})
 			req := httptest.NewRequestWithContext(
 				t.Context(),
 				http.MethodPost,
@@ -206,9 +307,9 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusCreated, rec.Code)
-			var resp agentProfileResponsePayload
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+			resp := decodeProfileResponse(t, rec.Body)
 			assert.Equal(t, profile.Name, resp.Name)
+			assertRegularExecutionSettings(t, resp.ExecutionSettings, nil, profile.ExecutionSettings.DefaultModel)
 		})
 
 		t.Run("accepts acp-stdio execution settings without default model", func(t *testing.T) {
@@ -233,9 +334,19 @@ func TestAgentProfileHandlers(t *testing.T) {
 			}).Return(&profile, nil)
 
 			h := newServerWithSvc(t, svc)
-			body := `{"name":"` + profile.Name + `","displayName":"` + profile.DisplayName + `","role":"` +
-				profile.Role + `","instructions":"` + profile.Instructions + `","toolRefs":["tool-a","tool-b"],` +
-				`"executionSettings":{"mode":"acp-stdio","agentCommand":{"command":"opencode","args":["acp","--safe"]},"cwd":"/workspace"}}`
+			body := mustJSON(t, CreateAgentProfileRequest{
+				Name:         profile.Name,
+				DisplayName:  &profile.DisplayName,
+				Role:         profile.Role,
+				Instructions: profile.Instructions,
+				ToolRefs:     &profile.ToolRefs,
+				ExecutionSettings: makeACPExecutionSettings(
+					t,
+					"opencode",
+					[]string{"acp", "--safe"},
+					"/workspace",
+				),
+			})
 			req := httptest.NewRequestWithContext(
 				t.Context(),
 				http.MethodPost,
@@ -246,13 +357,9 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusCreated, rec.Code)
-			var resp agentProfileResponsePayload
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
-			assert.Equal(t, "acp-stdio", resp.ExecutionSettings.Mode)
-			assert.Empty(t, resp.ExecutionSettings.DefaultModel)
-			require.NotNil(t, resp.ExecutionSettings.AgentCommand)
-			assert.Equal(t, []string{"acp", "--safe"}, resp.ExecutionSettings.AgentCommand.Args)
-			assert.Equal(t, "/workspace", resp.ExecutionSettings.Cwd)
+			resp := decodeProfileResponse(t, rec.Body)
+			cwd := "/workspace"
+			assertACPExecutionSettings(t, resp.ExecutionSettings, "opencode", []string{"acp", "--safe"}, &cwd)
 		})
 
 		t.Run("returns 400 for malformed JSON", func(t *testing.T) {
@@ -360,6 +467,8 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
+			resp := decodeProfileResponse(t, rec.Body)
+			assertRegularExecutionSettings(t, resp.ExecutionSettings, nil, profile.ExecutionSettings.DefaultModel)
 		})
 
 		t.Run("returns acp-stdio execution settings", func(t *testing.T) {
@@ -375,14 +484,9 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			var resp agentProfileResponsePayload
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
-			assert.Equal(t, "acp-stdio", resp.ExecutionSettings.Mode)
-			assert.Empty(t, resp.ExecutionSettings.DefaultModel)
-			require.NotNil(t, resp.ExecutionSettings.AgentCommand)
-			assert.Equal(t, "opencode", resp.ExecutionSettings.AgentCommand.Command)
-			assert.Equal(t, []string{"acp", "--safe"}, resp.ExecutionSettings.AgentCommand.Args)
-			assert.Equal(t, "/workspace", resp.ExecutionSettings.Cwd)
+			resp := decodeProfileResponse(t, rec.Body)
+			cwd := "/workspace"
+			assertACPExecutionSettings(t, resp.ExecutionSettings, "opencode", []string{"acp", "--safe"}, &cwd)
 		})
 
 		t.Run("returns 404 for missing profile", func(t *testing.T) {
@@ -433,9 +537,17 @@ func TestAgentProfileHandlers(t *testing.T) {
 			}).Return(&updated, nil)
 
 			h := newServerWithSvc(t, svc)
-			body := `{"displayName":"` + profile.DisplayName + `","role":"` + updated.Role + `","instructions":"` +
-				profile.Instructions + `","toolRefs":["tool-a","tool-b"],"executionSettings":{"defaultModel":"` +
-				profile.ExecutionSettings.DefaultModel + `"}}`
+			body := mustJSON(t, UpdateAgentProfileRequest{
+				DisplayName:  &profile.DisplayName,
+				Role:         updated.Role,
+				Instructions: profile.Instructions,
+				ToolRefs:     &profile.ToolRefs,
+				ExecutionSettings: makeRegularExecutionSettings(
+					t,
+					profile.ExecutionSettings.DefaultModel,
+					false,
+				),
+			})
 			req := httptest.NewRequestWithContext(
 				t.Context(),
 				http.MethodPut,
@@ -446,9 +558,9 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			var resp agentProfileResponsePayload
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+			resp := decodeProfileResponse(t, rec.Body)
 			assert.Equal(t, updated.Role, resp.Role)
+			assertRegularExecutionSettings(t, resp.ExecutionSettings, nil, profile.ExecutionSettings.DefaultModel)
 		})
 
 		t.Run("accepts acp-stdio execution settings without default model", func(t *testing.T) {
@@ -475,9 +587,18 @@ func TestAgentProfileHandlers(t *testing.T) {
 			}).Return(&updated, nil)
 
 			h := newServerWithSvc(t, svc)
-			body := `{"displayName":"` + profile.DisplayName + `","role":"` + updated.Role + `","instructions":"` +
-				updated.Instructions + `","toolRefs":["tool-a","tool-b"],` +
-				`"executionSettings":{"mode":"acp-stdio","agentCommand":{"command":"opencode","args":["acp","--safe"]},"cwd":"/workspace"}}`
+			body := mustJSON(t, UpdateAgentProfileRequest{
+				DisplayName:  &profile.DisplayName,
+				Role:         updated.Role,
+				Instructions: updated.Instructions,
+				ToolRefs:     &updated.ToolRefs,
+				ExecutionSettings: makeACPExecutionSettings(
+					t,
+					"opencode",
+					[]string{"acp", "--safe"},
+					"/workspace",
+				),
+			})
 			req := httptest.NewRequestWithContext(
 				t.Context(),
 				http.MethodPut,
@@ -488,11 +609,9 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			var resp agentProfileResponsePayload
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
-			assert.Equal(t, "acp-stdio", resp.ExecutionSettings.Mode)
-			require.NotNil(t, resp.ExecutionSettings.AgentCommand)
-			assert.Equal(t, []string{"acp", "--safe"}, resp.ExecutionSettings.AgentCommand.Args)
+			resp := decodeProfileResponse(t, rec.Body)
+			cwd := "/workspace"
+			assertACPExecutionSettings(t, resp.ExecutionSettings, "opencode", []string{"acp", "--safe"}, &cwd)
 		})
 
 		t.Run("returns 400 for malformed JSON", func(t *testing.T) {
@@ -593,4 +712,12 @@ func TestAgentProfileHandlers(t *testing.T) {
 			require.Equal(t, http.StatusInternalServerError, rec.Code)
 		})
 	})
+}
+
+func stringSliceValue(value *[]string) []string {
+	if value == nil {
+		return nil
+	}
+
+	return append([]string(nil), (*value)...)
 }

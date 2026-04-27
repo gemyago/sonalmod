@@ -1005,14 +1005,57 @@ components:
       additionalProperties: false
 
     AgentProfileExecutionSettings:
+      oneOf:
+        - $ref: '#/components/schemas/AgentProfileRegularExecutionSettings'
+        - $ref: '#/components/schemas/AgentProfileACPStdioExecutionSettings'
+
+    AgentProfileRegularExecutionSettings:
       type: object
-      description: Runtime-owned execution defaults for an agent profile.
+      description: Runtime-owned execution defaults for built-in profile execution.
       required: [defaultModel]
       properties:
+        mode:
+          type: string
+          enum: [regular]
+          description: Execution mode. Omit for regular built-in execution.
         defaultModel:
           type: string
           description: Fully-qualified default model in `provider/model-name` form.
           minLength: 1
+      additionalProperties: false
+
+    AgentProfileACPStdioExecutionSettings:
+      type: object
+      description: Runtime-owned execution defaults for ACP-compatible stdio profile execution.
+      required: [mode, agentCommand]
+      properties:
+        mode:
+          type: string
+          const: acp-stdio
+          description: Execution mode for ACP-compatible stdio profiles.
+        agentCommand:
+          $ref: '#/components/schemas/ACPStdioAgentCommand'
+        cwd:
+          type: string
+          description: Optional working directory used to launch the ACP stdio agent.
+      additionalProperties: false
+
+    ACPStdioAgentCommand:
+      type: object
+      description: Command defaults used to launch an ACP-compatible stdio agent.
+      required: [command]
+      properties:
+        command:
+          type: string
+          minLength: 1
+          description: Command executable to launch the ACP-compatible stdio agent.
+        args:
+          type: array
+          description: Command arguments passed to the ACP-compatible stdio agent executable.
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
       additionalProperties: false
 
     CreateAgentProfileRequest:
