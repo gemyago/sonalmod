@@ -548,7 +548,7 @@ describe('Chat', () => {
       expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue(`${model2.provider}/${model2.name}`)
     })
 
-    it('submit sends selected model in request body', async () => {
+    it('submit sends selected profileName in request body', async () => {
       const model = makeModelInfo()
       mocks.listModels.mockResolvedValue({ models: [model] })
       const sessionId = faker.string.uuid()
@@ -572,7 +572,7 @@ describe('Chat', () => {
       await waitFor(() => expect(fetchMock).toHaveBeenCalled())
       const firstArg = fetchMock.mock.calls[0][0]
       const sentBody = await (firstArg as Request).json()
-      expect(sentBody.model).toBe(`${model.provider}/${model.name}`)
+      expect(sentBody.profileName).toBe(`${model.provider}/${model.name}`)
     })
 
     it('default selection uses localStorage value if present', async () => {

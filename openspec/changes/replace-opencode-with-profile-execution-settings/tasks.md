@@ -34,7 +34,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 ## 5. Remove Request-Level Model Selection
 
 - [x] 5.1 Change standard run OpenAPI request bodies to require `profileName` and remove request-level `model`, then regenerate Go API code and update request mapper tests.
-- [ ] 5.2 Update Svelte generated API types, chat client calls, fixtures, and tests so standard runs send `profileName` instead of `model`.
+- [x] 5.2 Update Svelte generated API types, chat client calls, fixtures, and tests so standard runs send `profileName` instead of `model`.
 - [ ] 5.3 Remove regular-run compatibility code that accepted request-level `model` and add regression tests that missing `profileName` is rejected.
 
 ## 6. Remove OpenCode Public Surface

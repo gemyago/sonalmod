@@ -251,9 +251,9 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AgentRunRequest: {
+            /** @description Name of the saved agent profile whose execution settings will be used for this run. */
+            profileName: string;
             message: components["schemas"]["UserMessageContent"];
-            /** @description Optional model name; empty selects the runtime default (`NewAgentRunnerParams.ModelName`). */
-            model?: string;
         };
         /** @description User message for `POST /agent-runs` / continue run: text parts (always user role; not sent by clients). */
         UserMessageContent: {
