@@ -17,7 +17,12 @@ func TestOpenCodeLaunchRequestMapper(t *testing.T) {
 		Instructions: "Always include tests",
 		ToolRefs:     []string{"workspacefs", "skills"},
 		ExecutionSettings: agentprofiles.ExecutionSettings{
-			DefaultModel: "openai/gpt-5",
+			Mode: agentprofiles.ExecutionModeACPStdio,
+			AgentCommand: agentprofiles.ACPStdioAgentCommand{
+				Command: "profile-opencode",
+				Args:    []string{"acp", "--profile"},
+			},
+			Cwd: "/workspace/profile",
 		},
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
@@ -25,24 +30,22 @@ func TestOpenCodeLaunchRequestMapper(t *testing.T) {
 	binding := OpenCodeBinding{
 		Name:        "binding-main",
 		ProfileName: profile.Name,
-		CWD:         "/workspace/project",
+		CWD:         "/workspace/binding",
 		AgentCommand: OpenCodeAgentCommand{
-			Command: "opencode",
-			Args:    []string{"acp"},
+			Command: "binding-opencode",
+			Args:    []string{"acp", "--binding"},
 		},
 		LaunchOptions: OpenCodeLaunchOptions{Transport: "stdio"},
 	}
 
-	t.Run("merges profile and binding defaults into ACP request", func(t *testing.T) {
+	t.Run("maps prompt with profile-owned ACP stdio settings", func(t *testing.T) {
 		request, err := MapOpenCodeLaunchRequest(profile, binding, OpenCodeLaunchRequest{
 			ProfileName: profile.Name,
 			Prompt:      "fix flaky test",
 		})
 		require.NoError(t, err)
-		assert.Equal(t, binding.AgentCommand, request.AgentCommand)
-		assert.Equal(t, binding.CWD, request.CWD)
+		assert.Equal(t, profile.ExecutionSettings, request.ExecutionSettings)
 		assert.Contains(t, request.Prompt, profile.Instructions)
-		assert.Contains(t, request.Prompt, "openai/gpt-5")
 		assert.Contains(t, request.Prompt, "workspacefs")
 		assert.Contains(t, request.Prompt, "fix flaky test")
 	})
@@ -82,5 +85,18 @@ func TestOpenCodeLaunchRequestMapper(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "references profile")
+	})
+
+	t.Run("returns validation error for non ACP stdio profiles", func(t *testing.T) {
+		regularProfile := profile
+		regularProfile.ExecutionSettings = agentprofiles.ExecutionSettings{
+			DefaultModel: "openai/gpt-5",
+		}
+
+		_, err := MapOpenCodeLaunchRequest(regularProfile, binding, OpenCodeLaunchRequest{
+			Prompt: "run",
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "does not use acp-stdio")
 	})
 }

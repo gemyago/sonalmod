@@ -15,28 +15,22 @@ type OpenCodeLaunchRequest struct {
 	Prompt      string
 }
 
-// MapOpenCodeLaunchRequest composes ACP launch params from profile and binding defaults.
-func MapOpenCodeLaunchRequest(
+// MapACPStdioExecutorRequest composes ACP stdio executor input from profile defaults.
+func MapACPStdioExecutorRequest(
 	profile agentprofiles.AgentProfile,
-	binding OpenCodeBinding,
-	request OpenCodeLaunchRequest,
-) (OpenCodeACPLaunchRequest, error) {
-	prompt := strings.TrimSpace(request.Prompt)
+	prompt string,
+) (ACPStdioExecutorRequest, error) {
+	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
-		return OpenCodeACPLaunchRequest{}, errors.New("prompt is required")
+		return ACPStdioExecutorRequest{}, errors.New("prompt is required")
 	}
 
 	if profile.Name == "" {
-		return OpenCodeACPLaunchRequest{}, errors.New("profile name is required")
+		return ACPStdioExecutorRequest{}, errors.New("profile name is required")
 	}
-	if binding.Name == "" {
-		return OpenCodeACPLaunchRequest{}, errors.New("binding name is required")
-	}
-	if binding.ProfileName != profile.Name {
-		return OpenCodeACPLaunchRequest{}, fmt.Errorf(
-			"binding %s references profile %s but launch requested profile %s",
-			binding.Name,
-			binding.ProfileName,
+	if profile.ExecutionSettings.ModeOrDefault() != agentprofiles.ExecutionModeACPStdio {
+		return ACPStdioExecutorRequest{}, fmt.Errorf(
+			"profile %s does not use acp-stdio execution settings",
 			profile.Name,
 		)
 	}
@@ -55,10 +49,33 @@ func MapOpenCodeLaunchRequest(
 		prompt,
 	)
 
-	return OpenCodeACPLaunchRequest{
-		AgentCommand: binding.AgentCommand,
-		CWD:          binding.CWD,
-		Prompt:       composedPrompt,
-		MCPServers:   []any{},
+	return ACPStdioExecutorRequest{
+		ExecutionSettings: profile.ExecutionSettings,
+		Prompt:            composedPrompt,
+		MCPServers:        []any{},
 	}, nil
+}
+
+// MapOpenCodeLaunchRequest composes ACP stdio executor input from profile settings.
+func MapOpenCodeLaunchRequest(
+	profile agentprofiles.AgentProfile,
+	binding OpenCodeBinding,
+	request OpenCodeLaunchRequest,
+) (ACPStdioExecutorRequest, error) {
+	if profile.Name == "" {
+		return ACPStdioExecutorRequest{}, errors.New("profile name is required")
+	}
+	if binding.Name == "" {
+		return ACPStdioExecutorRequest{}, errors.New("binding name is required")
+	}
+	if binding.ProfileName != profile.Name {
+		return ACPStdioExecutorRequest{}, fmt.Errorf(
+			"binding %s references profile %s but launch requested profile %s",
+			binding.Name,
+			binding.ProfileName,
+			profile.Name,
+		)
+	}
+
+	return MapACPStdioExecutorRequest(profile, request.Prompt)
 }

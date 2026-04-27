@@ -46,7 +46,11 @@ func TestHandler(t *testing.T) {
 			Role:         "coder",
 			Instructions: "help",
 			ExecutionSettings: agent.ExecutionSettings{
-				DefaultModel: "openai/gpt-4.1",
+				Mode: agent.ExecutionModeACPStdio,
+				AgentCommand: agent.ACPStdioAgentCommand{
+					Command: "echo",
+					Args:    []string{"stub"},
+				},
 			},
 		})
 		require.NoError(t, err)
@@ -174,18 +178,18 @@ func TestHandler(t *testing.T) {
 
 type stubACPClient struct{}
 
-func (s *stubACPClient) Launch(
+func (s *stubACPClient) Execute(
 	_ context.Context,
-	_ cl.OpenCodeACPLaunchRequest,
-) (*cl.OpenCodeACPLaunchResult, error) {
+	_ cl.ACPStdioExecutorRequest,
+) (*cl.ACPStdioExecutorResult, error) {
 	result := map[string]any{"status": "ok"}
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		return nil, err
 	}
-	return &cl.OpenCodeACPLaunchResult{
+	return &cl.ACPStdioExecutorResult{
 		SessionID:    "session-main",
 		PromptResult: encoded,
-		Updates:      []cl.OpenCodeACPUpdate{},
+		Updates:      []cl.ACPStdioUpdate{},
 	}, nil
 }

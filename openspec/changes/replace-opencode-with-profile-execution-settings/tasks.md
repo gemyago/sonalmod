@@ -26,7 +26,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 4. ACP Stdio Execution Path
 
-- [ ] 4.1 Extract or adapt the existing ACP process code into a generic internal ACP stdio executor that consumes profile command settings instead of OpenCode binding records.
+- [x] 4.1 Extract or adapt the existing ACP process code into a generic internal ACP stdio executor that consumes profile command settings instead of OpenCode binding records.
 - [ ] 4.2 Wire ACP stdio profiles through the profile execution dispatcher and standard SSE stream contract, including `sessionBound`, `agent` or `error`, and `done` events.
 - [ ] 4.3 Persist ACP stdio run output through the same session storage path used by regular runs so `GET /sessions/{sessionId}` can replay completed ACP stdio history.
 - [ ] 4.4 Add tests for ACP stdio launch success, launch failure, protocol failure, and session read-back behavior through standard run and session endpoints.

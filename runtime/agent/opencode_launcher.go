@@ -37,5 +37,5 @@ func NewOpenCodeLauncher( //nolint:ireturn // public contract returns launcher i
 	profiles AgentProfilesService,
 	bindings OpenCodeBindingService,
 ) (OpenCodeLauncher, error) {
-	return cl.NewOpenCodeACPLauncher(profiles, bindings, cl.NewOpenCodeACPClient())
+	return cl.NewOpenCodeACPLauncher(profiles, bindings, cl.NewACPStdioExecutor())
 }

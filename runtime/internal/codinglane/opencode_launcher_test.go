@@ -25,7 +25,12 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 			Instructions: "Follow repository rules and keep changes focused.",
 			ToolRefs:     []string{"workspacefs", "skills"},
 			ExecutionSettings: agentprofiles.ExecutionSettings{
-				DefaultModel: "openai/gpt-5",
+				Mode: agentprofiles.ExecutionModeACPStdio,
+				AgentCommand: agentprofiles.ACPStdioAgentCommand{
+					Command: "profile-opencode",
+					Args:    []string{"acp", "--profile"},
+				},
+				Cwd: "/workspace/profile",
 			},
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
@@ -51,16 +56,20 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		profile := makeProfile("profile-main")
 		binding := makeBinding("binding-main", profile.Name)
 
-		acpClient := &fakeOpenCodeACPClient{
-			launchFn: func(_ context.Context, req OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error) {
-				assert.Equal(t, binding.AgentCommand.Command, req.AgentCommand.Command)
-				assert.Equal(t, binding.CWD, req.CWD)
+		acpExecutor := &fakeACPStdioExecutor{
+			executeFn: func(_ context.Context, req ACPStdioExecutorRequest) (*ACPStdioExecutorResult, error) {
+				assert.Equal(
+					t,
+					profile.ExecutionSettings.AgentCommand.Command,
+					req.ExecutionSettings.AgentCommand.Command,
+				)
+				assert.Equal(t, profile.ExecutionSettings.Cwd, req.ExecutionSettings.Cwd)
 				assert.Contains(t, req.Prompt, profile.Instructions)
 				assert.Contains(t, req.Prompt, "fix failing launch tests")
-				return &OpenCodeACPLaunchResult{
+				return &ACPStdioExecutorResult{
 					SessionID:    "session-42",
 					PromptResult: json.RawMessage(`{"ok":true}`),
-					Updates: []OpenCodeACPUpdate{{
+					Updates: []ACPStdioUpdate{{
 						SessionID: "session-42",
 						Type:      "final",
 						Payload:   json.RawMessage(`{"type":"final"}`),
@@ -73,7 +82,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 			profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile},
 		}, &fakeBindingsService{
 			bindings: map[string]OpenCodeBinding{binding.Name: binding},
-		}, acpClient)
+		}, acpExecutor)
 		require.NoError(t, err)
 
 		result, launchErr := launcher.Launch(t.Context(), OpenCodeLaunchRequest{
@@ -93,7 +102,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 
 		launcherMissingProfile, err := NewOpenCodeACPLauncher(&fakeProfilesService{
 			getErr: fmt.Errorf("wrapper: %w", agentprofiles.ErrAgentProfileNotFound),
-		}, &fakeBindingsService{}, &fakeOpenCodeACPClient{})
+		}, &fakeBindingsService{}, &fakeACPStdioExecutor{})
 		require.NoError(t, err)
 
 		_, launchErr := launcherMissingProfile.Launch(t.Context(), OpenCodeLaunchRequest{
@@ -105,7 +114,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 
 		launcherMissingBinding, err := NewOpenCodeACPLauncher(&fakeProfilesService{
 			profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile},
-		}, &fakeBindingsService{bindings: map[string]OpenCodeBinding{}}, &fakeOpenCodeACPClient{})
+		}, &fakeBindingsService{bindings: map[string]OpenCodeBinding{}}, &fakeACPStdioExecutor{})
 		require.NoError(t, err)
 
 		_, launchErr = launcherMissingBinding.Launch(t.Context(), OpenCodeLaunchRequest{
@@ -124,10 +133,10 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 			profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile},
 		}, &fakeBindingsService{
 			bindings: map[string]OpenCodeBinding{binding.Name: binding},
-		}, &fakeOpenCodeACPClient{
-			launchFn: func(_ context.Context, _ OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error) {
-				return nil, &OpenCodeACPError{
-					Kind: OpenCodeACPErrorKindSubprocess,
+		}, &fakeACPStdioExecutor{
+			executeFn: func(_ context.Context, _ ACPStdioExecutorRequest) (*ACPStdioExecutorResult, error) {
+				return nil, &ACPStdioError{
+					Kind: ACPStdioErrorKindSubprocess,
 					Op:   "start-subprocess",
 					Err:  errors.New("binary missing"),
 				}
@@ -146,10 +155,10 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 	})
 
 	t.Run("constructor validates required dependencies", func(t *testing.T) {
-		_, err := NewOpenCodeACPLauncher(nil, &fakeBindingsService{}, &fakeOpenCodeACPClient{})
+		_, err := NewOpenCodeACPLauncher(nil, &fakeBindingsService{}, &fakeACPStdioExecutor{})
 		require.Error(t, err)
 
-		_, err = NewOpenCodeACPLauncher(&fakeProfilesService{}, nil, &fakeOpenCodeACPClient{})
+		_, err = NewOpenCodeACPLauncher(&fakeProfilesService{}, nil, &fakeACPStdioExecutor{})
 		require.Error(t, err)
 
 		_, err = NewOpenCodeACPLauncher(&fakeProfilesService{}, &fakeBindingsService{}, nil)
@@ -160,7 +169,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		launcher, err := NewOpenCodeACPLauncher(
 			&fakeProfilesService{},
 			&fakeBindingsService{},
-			&fakeOpenCodeACPClient{},
+			&fakeACPStdioExecutor{},
 		)
 		require.NoError(t, err)
 
@@ -186,7 +195,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		launcherProfileLoadError, err := NewOpenCodeACPLauncher(
 			&fakeProfilesService{getErr: errors.New("database offline")},
 			&fakeBindingsService{},
-			&fakeOpenCodeACPClient{},
+			&fakeACPStdioExecutor{},
 		)
 		require.NoError(t, err)
 
@@ -200,7 +209,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		launcherBindingListError, err := NewOpenCodeACPLauncher(
 			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
 			&fakeBindingsService{listErr: errors.New("list failed")},
-			&fakeOpenCodeACPClient{},
+			&fakeACPStdioExecutor{},
 		)
 		require.NoError(t, err)
 
@@ -217,7 +226,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 				bindings: map[string]OpenCodeBinding{binding.Name: binding},
 				getErr:   errors.New("lookup failed"),
 			},
-			&fakeOpenCodeACPClient{},
+			&fakeACPStdioExecutor{},
 		)
 		require.NoError(t, err)
 
@@ -237,7 +246,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		launcherMismatch, err := NewOpenCodeACPLauncher(
 			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
 			&fakeBindingsService{bindings: map[string]OpenCodeBinding{wrongBinding.Name: wrongBinding}},
-			&fakeOpenCodeACPClient{},
+			&fakeACPStdioExecutor{},
 		)
 		require.NoError(t, err)
 
@@ -252,7 +261,7 @@ func TestOpenCodeACPLauncher(t *testing.T) {
 		launcherMappingError, err := NewOpenCodeACPLauncher(
 			&fakeProfilesService{profiles: map[string]agentprofiles.AgentProfile{profile.Name: profile}},
 			&fakeBindingsService{bindings: map[string]OpenCodeBinding{wrongBinding.Name: wrongBinding}},
-			&fakeOpenCodeACPClient{},
+			&fakeACPStdioExecutor{},
 		)
 		require.NoError(t, err)
 
@@ -273,18 +282,18 @@ func assertOpenCodeLaunchErrorKind(t *testing.T, err error, kind OpenCodeLaunchE
 	assert.Equal(t, kind, launchErr.Kind)
 }
 
-type fakeOpenCodeACPClient struct {
-	launchFn func(context.Context, OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error)
+type fakeACPStdioExecutor struct {
+	executeFn func(context.Context, ACPStdioExecutorRequest) (*ACPStdioExecutorResult, error)
 }
 
-func (f *fakeOpenCodeACPClient) Launch(
+func (f *fakeACPStdioExecutor) Execute(
 	ctx context.Context,
-	request OpenCodeACPLaunchRequest,
-) (*OpenCodeACPLaunchResult, error) {
-	if f.launchFn != nil {
-		return f.launchFn(ctx, request)
+	request ACPStdioExecutorRequest,
+) (*ACPStdioExecutorResult, error) {
+	if f.executeFn != nil {
+		return f.executeFn(ctx, request)
 	}
-	return &OpenCodeACPLaunchResult{SessionID: faker.New().UUID().V4()}, nil
+	return &ACPStdioExecutorResult{SessionID: faker.New().UUID().V4()}, nil
 }
 
 type fakeProfilesService struct {

@@ -46,23 +46,22 @@ type OpenCodeLaunchResult struct {
 	Updates      []OpenCodeACPUpdate
 }
 
-// OpenCodeACPLaunchClient launches validated ACP runs.
-type OpenCodeACPLaunchClient interface {
-	Launch(ctx context.Context, request OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error)
+type acpStdioExecutor interface {
+	Execute(ctx context.Context, request ACPStdioExecutorRequest) (*ACPStdioExecutorResult, error)
 }
 
 // OpenCodeACPLauncher resolves saved profile and binding configuration and runs ACP launches.
 type OpenCodeACPLauncher struct {
-	profiles  agentprofiles.AgentProfilesService
-	bindings  OpenCodeBindingService
-	acpClient OpenCodeACPLaunchClient
+	profiles    agentprofiles.AgentProfilesService
+	bindings    OpenCodeBindingService
+	acpExecutor acpStdioExecutor
 }
 
 // NewOpenCodeACPLauncher constructs a launcher from required dependencies.
 func NewOpenCodeACPLauncher(
 	profiles agentprofiles.AgentProfilesService,
 	bindings OpenCodeBindingService,
-	acpClient OpenCodeACPLaunchClient,
+	acpExecutor acpStdioExecutor,
 ) (*OpenCodeACPLauncher, error) {
 	if profiles == nil {
 		return nil, errors.New("profiles service is required")
@@ -70,13 +69,13 @@ func NewOpenCodeACPLauncher(
 	if bindings == nil {
 		return nil, errors.New("bindings service is required")
 	}
-	if acpClient == nil {
-		return nil, errors.New("ACP client is required")
+	if acpExecutor == nil {
+		return nil, errors.New("ACP stdio executor is required")
 	}
 	return &OpenCodeACPLauncher{
-		profiles:  profiles,
-		bindings:  bindings,
-		acpClient: acpClient,
+		profiles:    profiles,
+		bindings:    bindings,
+		acpExecutor: acpExecutor,
 	}, nil
 }
 
@@ -142,7 +141,7 @@ func (l *OpenCodeACPLauncher) Launch(
 		)
 	}
 
-	acpResult, err := l.acpClient.Launch(ctx, acpRequest)
+	acpResult, err := l.acpExecutor.Execute(ctx, acpRequest)
 	if err != nil {
 		return nil, wrapOpenCodeLaunchError(
 			OpenCodeLaunchErrorKindLaunchFailed,
