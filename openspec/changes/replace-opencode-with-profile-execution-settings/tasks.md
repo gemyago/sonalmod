@@ -15,7 +15,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 - [x] 2.1 Update `runtime/internal/agentapi/openapi.yaml` profile schemas for mode-specific execution settings, regenerate Go API code, and update runtime profile handler tests.
 - [x] 2.2 Regenerate the Svelte OpenAPI client after the profile schema change and update any affected frontend type fixtures or tests.
-- [ ] 2.3 Add API tests proving existing profiles without `executionSettings.mode` are returned as valid regular profiles and ACP stdio profiles are returned with command, args, and optional `cwd`.
+- [x] 2.3 Add API tests proving existing profiles without `executionSettings.mode` are returned as valid regular profiles and ACP stdio profiles are returned with command, args, and optional `cwd`.
 
 ## 3. Profile-Aware Standard Runs
 

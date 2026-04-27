@@ -114,8 +114,8 @@ func TestAgentProfileHandlers(t *testing.T) {
 		}
 	}
 
-	makeACPProfile := func() ap.AgentProfile {
-		return ap.AgentProfile{
+	makeACPProfileWithCwd := func(cwd string) ap.AgentProfile {
+		profile := ap.AgentProfile{
 			Name:         "profile-" + fake.Lorem().Word(),
 			DisplayName:  fake.Lorem().Word(),
 			Role:         fake.Lorem().Word(),
@@ -127,11 +127,40 @@ func TestAgentProfileHandlers(t *testing.T) {
 					Command: "opencode",
 					Args:    []string{"acp", "--safe"},
 				},
-				Cwd: "/workspace",
 			},
 			CreatedAt: time.Now().Add(-time.Hour).UTC().Truncate(time.Second),
 			UpdatedAt: time.Now().UTC().Truncate(time.Second),
 		}
+
+		if cwd != "" {
+			profile.ExecutionSettings.Cwd = cwd
+		}
+
+		return profile
+	}
+
+	makeACPProfile := func() ap.AgentProfile {
+		return makeACPProfileWithCwd("/workspace")
+	}
+
+	createPersistedProfile := func(
+		t *testing.T,
+		svc ap.AgentProfilesService,
+		profile ap.AgentProfile,
+	) ap.AgentProfile {
+		t.Helper()
+
+		created, err := svc.Create(t.Context(), ap.CreateAgentProfileParams{
+			Name:              profile.Name,
+			DisplayName:       profile.DisplayName,
+			Role:              profile.Role,
+			Instructions:      profile.Instructions,
+			ToolRefs:          profile.ToolRefs,
+			ExecutionSettings: profile.ExecutionSettings,
+		})
+		require.NoError(t, err)
+
+		return *created
 	}
 
 	mustJSON := func(t *testing.T, value any) string {
@@ -248,6 +277,50 @@ func TestAgentProfileHandlers(t *testing.T) {
 			require.Len(t, resp.Profiles, 2)
 			assert.Equal(t, p1.Name, resp.Profiles[0].Name)
 			assert.Equal(t, p2.Name, resp.Profiles[1].Name)
+		})
+
+		t.Run("returns persisted legacy regular and acp-stdio execution settings", func(t *testing.T) {
+			t.Parallel()
+
+			svc := newFileProfilesService(t)
+			regularProfile := createPersistedProfile(t, svc, makeProfile())
+			acpProfile := createPersistedProfile(t, svc, makeACPProfile())
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agent-profiles", nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+
+			var resp AgentProfileListResponse
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+			require.Len(t, resp.Profiles, 2)
+
+			profilesByName := make(map[string]AgentProfileResponse, len(resp.Profiles))
+			for _, profile := range resp.Profiles {
+				profilesByName[profile.Name] = profile
+			}
+
+			regularResp, ok := profilesByName[regularProfile.Name]
+			require.True(t, ok)
+			assertRegularExecutionSettings(
+				t,
+				regularResp.ExecutionSettings,
+				nil,
+				regularProfile.ExecutionSettings.DefaultModel,
+			)
+
+			acpResp, ok := profilesByName[acpProfile.Name]
+			require.True(t, ok)
+			cwd := "/workspace"
+			assertACPExecutionSettings(
+				t,
+				acpResp.ExecutionSettings,
+				"opencode",
+				[]string{"acp", "--safe"},
+				&cwd,
+			)
 		})
 
 		t.Run("returns 500 on service error", func(t *testing.T) {
@@ -471,6 +544,22 @@ func TestAgentProfileHandlers(t *testing.T) {
 			assertRegularExecutionSettings(t, resp.ExecutionSettings, nil, profile.ExecutionSettings.DefaultModel)
 		})
 
+		t.Run("returns persisted legacy regular profile without mode", func(t *testing.T) {
+			t.Parallel()
+
+			svc := newFileProfilesService(t)
+			profile := createPersistedProfile(t, svc, makeProfile())
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agent-profiles/"+profile.Name, nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			resp := decodeProfileResponse(t, rec.Body)
+			assertRegularExecutionSettings(t, resp.ExecutionSettings, nil, profile.ExecutionSettings.DefaultModel)
+		})
+
 		t.Run("returns acp-stdio execution settings", func(t *testing.T) {
 			t.Parallel()
 			profile := makeACPProfile()
@@ -487,6 +576,22 @@ func TestAgentProfileHandlers(t *testing.T) {
 			resp := decodeProfileResponse(t, rec.Body)
 			cwd := "/workspace"
 			assertACPExecutionSettings(t, resp.ExecutionSettings, "opencode", []string{"acp", "--safe"}, &cwd)
+		})
+
+		t.Run("returns persisted acp-stdio execution settings without cwd", func(t *testing.T) {
+			t.Parallel()
+
+			svc := newFileProfilesService(t)
+			profile := createPersistedProfile(t, svc, makeACPProfileWithCwd(""))
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agent-profiles/"+profile.Name, nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			resp := decodeProfileResponse(t, rec.Body)
+			assertACPExecutionSettings(t, resp.ExecutionSettings, "opencode", []string{"acp", "--safe"}, nil)
 		})
 
 		t.Run("returns 404 for missing profile", func(t *testing.T) {
