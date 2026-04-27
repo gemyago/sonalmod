@@ -628,13 +628,14 @@ components:
   schemas:
     AgentRunRequest:
       type: object
-      required: [message]
+      required: [profileName, message]
       properties:
+        profileName:
+          type: string
+          minLength: 1
+          description: Name of the saved agent profile whose execution settings will be used for this run.
         message:
           $ref: '#/components/schemas/UserMessageContent'
-        model:
-          type: string
-          description: Optional model name; empty selects the runtime default (`NewAgentRunnerParams.ModelName`).
       additionalProperties: false
 
     UserMessageContent:

@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"encoding/json"
 	"testing"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
@@ -74,6 +75,31 @@ func TestAgentAPIRequestMapper(t *testing.T) {
 				},
 			}
 			assert.Equal(t, want, got)
+		})
+	})
+
+	t.Run("AgentRunRequestJSON", func(t *testing.T) {
+		t.Run("includes_profileName_and_omits_model", func(t *testing.T) {
+			fake := faker.New()
+			profileName := "profile-" + fake.Lorem().Word()
+			text := fake.Lorem().Sentence(4)
+
+			body := AgentRunRequest{
+				ProfileName: profileName,
+				Message: UserMessageContent{
+					Parts: []UserMessagePart{
+						{Text: text},
+					},
+				},
+			}
+
+			data, err := json.Marshal(body)
+			require.NoError(t, err)
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, profileName, got["profileName"])
+			assert.NotContains(t, got, "model")
 		})
 	})
 }

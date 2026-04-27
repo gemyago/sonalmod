@@ -396,8 +396,6 @@ func TestAgentAPIServer(t *testing.T) {
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
 			profileModel := "myprovider/" + fake.Lorem().Word()
-			requestModel := "otherprovider/" + fake.Lorem().Word()
-
 			gen := NewMockIDGen()
 			expSID := MockIDGenNextGenerated(gen).String()
 
@@ -420,9 +418,8 @@ func TestAgentAPIServer(t *testing.T) {
 
 			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
 			body := fmt.Sprintf(
-				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
+				`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`,
 				profileName,
-				requestModel,
 				msg,
 			)
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
@@ -1110,8 +1107,6 @@ func TestAgentAPIServer(t *testing.T) {
 			sessPath := fake.UUID().V4()
 			profileName := "profile-" + fake.Lorem().Word()
 			profileModel := "myprovider/" + fake.Lorem().Word()
-			requestModel := "otherprovider/" + fake.Lorem().Word()
-
 			profilesSvc := &mockAgentProfilesService{}
 			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
 				Name: profileName,
@@ -1131,9 +1126,8 @@ func TestAgentAPIServer(t *testing.T) {
 
 			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
 			body := fmt.Sprintf(
-				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
+				`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`,
 				profileName,
-				requestModel,
 				msg,
 			)
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
