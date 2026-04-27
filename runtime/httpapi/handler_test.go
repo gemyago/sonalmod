@@ -76,28 +76,6 @@ func TestHandler(t *testing.T) {
 		assert.Nil(t, handler)
 	})
 
-	t.Run("ignores OpenCodeBindingService when omitted", func(t *testing.T) {
-		handler, err := NewHandler(HandlerArgs{
-			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   newTestProfileRunDispatcher(t),
-			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-			AgentProfilesService:   newTestProfilesService(t),
-		}, WithLogger(rootTestLogger))
-		require.NoError(t, err)
-		require.NotNil(t, handler)
-	})
-
-	t.Run("ignores OpenCodeLauncher when omitted", func(t *testing.T) {
-		handler, err := NewHandler(HandlerArgs{
-			Runner:                 newTestRunner(t),
-			ProfileRunDispatcher:   newTestProfileRunDispatcher(t),
-			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-			AgentProfilesService:   newTestProfilesService(t),
-		}, WithLogger(rootTestLogger))
-		require.NoError(t, err)
-		require.NotNil(t, handler)
-	})
-
 	t.Run("creates handler with non-nil services", func(t *testing.T) {
 		handler, err := NewHandler(HandlerArgs{
 			Runner:                 newTestRunner(t),

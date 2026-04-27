@@ -21,10 +21,6 @@ type HandlerArgs struct {
 	ProvidersConfigService agent.ProvidersConfigService
 	// AgentProfilesService is required.
 	AgentProfilesService agent.AgentProfilesService
-	// Deprecated: ignored; OpenCode endpoint wiring was removed.
-	OpenCodeBindingService agent.OpenCodeBindingService
-	// Deprecated: ignored; OpenCode endpoint wiring was removed.
-	OpenCodeLauncher agent.OpenCodeLauncher
 
 	// ModelsLister is optional. When provided, enables the GET /models endpoint.
 	// Typically set to the runner's models locator when dynamic providers are used.
