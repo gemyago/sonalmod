@@ -1,69 +1,51 @@
-## 1. Profile Execution Settings Domain
+## Important Apply Phase Constraint
 
-Ownership: `runtime/internal/agentprofiles/**` and public profile aliases in `runtime/agent/agent_profiles.go`. This group must not touch HTTP handlers, OpenAPI generated code, or ACP subprocess code.
+Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instruction.
 
-- [ ] 1.1 Add mode-aware execution settings domain types where omitted mode normalizes to `regular`, explicit `regular` is accepted, and explicit `acp-stdio` is accepted.
-- [ ] 1.2 Implement validation so regular profiles require `defaultModel`, while `acp-stdio` profiles require command settings and do not require `defaultModel`.
-- [ ] 1.3 Model ACP stdio command settings with command, args, and optional cwd only; do not add a separate transport field.
-- [ ] 1.4 Update file-backed profile read/write to persist the new shape and read existing model-only frontmatter as regular execution settings.
-- [ ] 1.5 Update database-backed profile JSON persistence and migration structs for the new mode-aware execution settings.
-- [ ] 1.6 Add domain, file service, and database service tests covering omitted mode, explicit regular mode, `acp-stdio`, invalid modes, invalid commands, and legacy model-only reads.
+---
 
-## 2. Runtime HTTP Contract
+## 1. Profile Execution Settings Contract
 
-Ownership: `runtime/internal/agentapi/openapi.yaml`, generated `runtime/internal/agentapi/api.gen.go`, profile/request mappers, and agentapi handler tests. This group owns the public HTTP shape but not execution dispatch internals.
+- [ ] 1.1 Extend the runtime agent profile domain with `regular` and `acp-stdio` execution setting shapes, treating omitted mode as `regular`, and add unit tests for accepted and rejected settings.
+- [ ] 1.2 Update file-backed profile persistence to round-trip omitted regular mode, explicit regular mode, and ACP stdio settings without losing existing regular profiles.
+- [ ] 1.3 Update database-backed profile persistence and migrations to store the new execution settings shape, with tests for existing regular records and ACP stdio records.
+- [ ] 1.4 Update profile API mapping and validation so profile CRUD accepts regular settings with `defaultModel`, accepts ACP stdio settings without `defaultModel`, and rejects unsupported modes or invalid command settings.
 
-- [ ] 2.1 Update profile schemas so `executionSettings.mode` is optional, defaults semantically to `regular`, and accepts only `regular` or `acp-stdio`.
-- [ ] 2.2 Update ACP stdio profile schema fields to include agent command, args, and optional cwd, with no transport property.
-- [ ] 2.3 Update `AgentRunRequest` to require `profileName` and remove request-level `model`.
-- [ ] 2.4 Remove `/opencode-bindings`, `/opencode-bindings/{bindingName}`, `/opencode-launches`, and all OpenCode binding/launch schemas from `openapi.yaml`.
-- [ ] 2.5 Regenerate runtime OpenAPI Go code with `go generate ./internal/agentapi` from the `runtime/` module root.
-- [ ] 2.6 Update profile mappers, request parsing, and agentapi tests for optional mode defaulting, `acp-stdio` settings, required `profileName`, and removed OpenCode routes.
+## 2. Public Profile API Contract
 
-## 3. Regular Profile Run Dispatch
+- [ ] 2.1 Update `runtime/internal/agentapi/openapi.yaml` profile schemas for mode-specific execution settings, regenerate Go API code, and update runtime profile handler tests.
+- [ ] 2.2 Regenerate the Svelte OpenAPI client after the profile schema change and update any affected frontend type fixtures or tests.
+- [ ] 2.3 Add API tests proving existing profiles without `executionSettings.mode` are returned as valid regular profiles and ACP stdio profiles are returned with command, args, and optional `cwd`.
 
-Ownership: standard run parameters, `runtime/internal/agentapi` run handler integration, background-runner wiring, and regular-run tests. This group must keep ACP execution behind an interface or stub and must not implement the ACP subprocess flow.
+## 3. Profile-Aware Standard Runs
 
-- [ ] 3.1 Update runtime run params and builders so standard runs carry `profileName` and no longer carry request-level model selection.
-- [ ] 3.2 Add a profile-aware dispatcher interface below HTTP handling that resolves the selected profile before executing a run.
-- [ ] 3.3 Route omitted-mode and explicit `regular` profiles through the existing built-in runner using the profile's `defaultModel`.
-- [ ] 3.4 Return validation or not-found errors for missing `profileName`, missing profile, unsupported mode, and regular profiles without model.
-- [ ] 3.5 Add regular dispatch tests for start run, continue run, missing profile selection, missing selected profile, and default-mode behavior.
+- [ ] 3.1 Introduce a profile execution dispatcher below the HTTP handler that loads profiles and routes regular profiles to the built-in runner using `executionSettings.defaultModel`.
+- [ ] 3.2 Teach standard start-run and continue-run paths to accept `profileName` while preserving the current request model path until the API removal task, and add handler tests for regular profile dispatch.
+- [ ] 3.3 Add not-found and validation handling for missing, unknown, or unusable `profileName` values using the standard problem/error responses.
+- [ ] 3.4 Update bundled backend wiring in `apps/sonalmod` so the runtime HTTP handler receives the profile-aware execution dependencies without exposing ACP process details.
 
-## 4. ACP Stdio Execution
+## 4. ACP Stdio Execution Path
 
-Ownership: internal ACP execution under a generic package such as `runtime/internal/acpstdio` or equivalent, plus dispatcher adapter code needed to plug ACP stdio into the runner-style contract. This group must not reintroduce public OpenCode endpoints, public OpenCode constructors, or generic internal types named after OpenCode.
+- [ ] 4.1 Extract or adapt the existing ACP process code into a generic internal ACP stdio executor that consumes profile command settings instead of OpenCode binding records.
+- [ ] 4.2 Wire ACP stdio profiles through the profile execution dispatcher and standard SSE stream contract, including `sessionBound`, `agent` or `error`, and `done` events.
+- [ ] 4.3 Persist ACP stdio run output through the same session storage path used by regular runs so `GET /sessions/{sessionId}` can replay completed ACP stdio history.
+- [ ] 4.4 Add tests for ACP stdio launch success, launch failure, protocol failure, and session read-back behavior through standard run and session endpoints.
 
-- [ ] 4.1 Rename surviving generic ACP execution package/files/types away from OpenCode-specific names before adapting behavior.
-- [ ] 4.2 Adapt the ACP launch request mapper to consume profile `acp-stdio` execution settings instead of saved OpenCode bindings.
-- [ ] 4.3 Convert ACP prompt results, updates, and protocol failures into standard runtime session events for SSE streaming.
-- [ ] 4.4 Persist ACP stdio run events through the common session storage path so `GET /sessions/{sessionId}` can replay them.
-- [ ] 4.5 Add ACP stdio execution tests for successful launch, command validation failure, protocol failure, stream output mapping, and session read-back.
-- [ ] 4.6 Verify remaining OpenCode names are limited to leaf executable-specific code, fixtures, or historical docs.
+## 5. Remove Request-Level Model Selection
 
-## 5. Public Surface Cleanup And App Wiring
+- [ ] 5.1 Change standard run OpenAPI request bodies to require `profileName` and remove request-level `model`, then regenerate Go API code and update request mapper tests.
+- [ ] 5.2 Update Svelte generated API types, chat client calls, fixtures, and tests so standard runs send `profileName` instead of `model`.
+- [ ] 5.3 Remove regular-run compatibility code that accepted request-level `model` and add regression tests that missing `profileName` is rejected.
 
-Ownership: exported runtime packages, runtime HTTP constructor args, bundled backend wiring, obsolete OpenCode persistence, and AGENTS/public-contract docs. This group removes public leakage after the replacement path exists.
+## 6. Remove OpenCode Public Surface
 
-- [ ] 5.1 Remove exported OpenCode binding and launcher aliases, constructors, and public tests from `runtime/agent`.
-- [ ] 5.2 Remove OpenCode binding service and launcher requirements from `runtime/httpapi.HandlerArgs` and its tests.
-- [ ] 5.3 Remove OpenCode binding service construction, launcher construction, and binding auto-migration from `apps/sonalmod/internal/runtime.go` and related tests.
-- [ ] 5.4 Delete obsolete OpenCode binding persistence code and tests when no longer referenced by ACP stdio execution.
-- [ ] 5.5 Update `runtime/AGENTS.md`, `apps/sonalmod/AGENTS.md`, and any public-contract docs that mention OpenCode endpoints, binding services, or launcher dependencies.
+- [ ] 6.1 Remove `/opencode-bindings`, `/opencode-bindings/{bindingName}`, and `/opencode-launches` from the OpenAPI contract, regenerate Go and Svelte API artifacts, and update affected tests.
+- [ ] 6.2 Delete OpenCode binding and launch handlers, mappers, generated-operation tests, persistence services, and bundled backend wiring that are no longer reachable.
+- [ ] 6.3 Remove exported OpenCode aliases, launcher constructors, and binding services from `runtime/agent` and remove OpenCode dependencies from `runtime/httpapi.HandlerArgs`.
+- [ ] 6.4 Rename surviving generic internals from OpenCode-specific names to ACP stdio/profile execution names, keeping OpenCode wording only in executable-specific leaf adapters, fixtures, or historical docs.
 
-## 6. UI Generated Client
+## 7. Verification and Documentation
 
-Ownership: `apps/sonal-ui/src/lib/agentapi/agentapi.generated.ts` and only the minimal client/type call sites needed after API generation. This group must not change UI screens unless generated types require it.
-
-- [ ] 6.1 Regenerate the Svelte OpenAPI TypeScript client with `make -C apps/sonal-ui generate-api` from the repository root.
-- [ ] 6.2 Update client/type usage for required `profileName`, removed request-level `model`, and new profile execution settings if existing TypeScript references break.
-- [ ] 6.3 Run `make -C apps/sonal-ui check-api` and targeted UI tests or type checks needed for the generated client change.
-
-## 7. Cross-Cut Verification
-
-Ownership: final integration verification only. This group should not add new feature code except fixes required by verification failures.
-
-- [ ] 7.1 Verify every requirement in `specs/agent-profile-execution-settings/spec.md` is covered by tests or explicit implementation checks.
-- [ ] 7.2 Run targeted runtime tests after all runtime groups land and fix failures.
-- [ ] 7.3 Run targeted bundled backend tests after app wiring changes land and fix failures.
-- [ ] 7.4 Run repo level checks, fix issues and re-run the task until all checks are green.
+- [ ] 7.1 Update runtime and app AGENTS or module docs if public wiring, commands, or architecture notes changed during implementation.
+- [ ] 7.2 Run `make affected-lint-test` from the repository root and fix all lint, test, generation, or API drift failures.
+- [ ] 7.3 Verify the final OpenAPI and generated clients expose profile execution settings and standard profile-based runs, with no OpenCode public endpoints or exported runtime symbols.
