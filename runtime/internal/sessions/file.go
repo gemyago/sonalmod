@@ -342,6 +342,7 @@ func (s *fileSession) UserID() string {
 	return s.userID
 }
 
+//nolint:ireturn // required by session.Session
 func (s *fileSession) State() session.State {
 	return &fileSessionState{
 		mu:    &s.mu,
@@ -349,6 +350,7 @@ func (s *fileSession) State() session.State {
 	}
 }
 
+//nolint:ireturn // required by session.Session
 func (s *fileSession) Events() session.Events {
 	return fileSessionEvents(s.events)
 }

@@ -30,8 +30,8 @@ type LLMAdapterFactory func(ctx context.Context, modelName string) (model.LLM, e
 // LLMAgentFactory creates an agent.Agent from a llmagent.Config.
 type LLMAgentFactory func(cfg llmagent.Config) (agent.Agent, error)
 
-// LLMAgentRunnerRunFactory creates a LLMRunner from runner.Config.
-type LLMAgentRunnerRunFactory func(cfg runner.Config) (LLMRunner, error)
+// LLMAgentRunnerRunFactory creates a runner.Runner from runner.Config.
+type LLMAgentRunnerRunFactory func(cfg runner.Config) (*runner.Runner, error)
 
 // LLMRunner executes an agent run and yields session events.
 // Compatible with runner.Runner.Run; *runner.Runner implements this interface directly.
@@ -318,6 +318,6 @@ func sliceToIter(events []*SessionEvent) iter.Seq2[*SessionEvent, error] {
 // RunExecutorFactoryFromRunner adapts [runner.New] to [LLMAgentRunnerRunFactory].
 func RunExecutorFactoryFromRunner(
 	cfg runner.Config,
-) (LLMRunner, error) {
+) (*runner.Runner, error) {
 	return runner.New(cfg)
 }

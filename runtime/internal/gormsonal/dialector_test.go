@@ -1,7 +1,12 @@
 package gormsonal
 
 import (
+	"errors"
 	"testing"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/schema"
 
 	"github.com/stretchr/testify/require"
 )
@@ -65,3 +70,30 @@ func TestNewGormDialector(t *testing.T) {
 		})
 	}
 }
+
+func TestDialectorTranslateFallback(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("boom")
+
+	d := Dialector{Dialector: stubDialector{}}
+	require.Same(t, want, d.Translate(want))
+}
+
+type stubDialector struct{}
+
+func (stubDialector) Name() string { return "stub" }
+
+func (stubDialector) Initialize(*gorm.DB) error { return nil }
+
+func (stubDialector) Migrator(*gorm.DB) gorm.Migrator { return nil }
+
+func (stubDialector) DataTypeOf(*schema.Field) string { return "" }
+
+func (stubDialector) DefaultValueOf(*schema.Field) clause.Expression { return nil }
+
+func (stubDialector) BindVarTo(clause.Writer, *gorm.Statement, any) {}
+
+func (stubDialector) QuoteTo(clause.Writer, string) {}
+
+func (stubDialector) Explain(string, ...any) string { return "" }

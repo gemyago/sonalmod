@@ -676,7 +676,7 @@ func TestAgentRunnerFactory(t *testing.T) {
 				llmAgentFactory: func(_ llmagent.Config) (agent.Agent, error) {
 					return mockAgent, nil
 				},
-				llmAgentRunnerFactory: func(_ runner.Config) (LLMRunner, error) {
+				llmAgentRunnerFactory: func(_ runner.Config) (*runner.Runner, error) {
 					return nil, runnerErr
 				},
 				sessionStorage: sessions.NewMemorySessionsStorage(),

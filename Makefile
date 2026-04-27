@@ -71,6 +71,10 @@ lint:
 	$(MAKE) -C tools/workspacefs lint
 	$(MAKE) -C tools/skills lint
 
+.PHONY: clean-lint-cache
+clean-lint-cache:
+	rm -r -f .cache/golangci-lint
+
 # We will need to rework coverage collection once we have more than one module.
 .PHONY: test
 test: $(cover_dir)

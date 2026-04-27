@@ -59,7 +59,7 @@ This monorepo is managed by Nx. Most typical tasks are:
 
 To run all affected lint and tests, use `make affected-lint-test`
 
-If `ireturn` results or `//nolint:ireturn` reports look stale or irrelevant, clean the module-scoped cache under `.cache/golangci-lint/<module>/` and rerun lint; the current pinned version has a cache issue.
+Any weird issues from golangci-linter (like invalid suppression directives or similar) maybe caused by caching issues. Try to clean the cache with `make clean-lint-cache` from repo root (this will only remove the cache) and run the linter again.
 
 ## npm Release Build Pipeline
 
