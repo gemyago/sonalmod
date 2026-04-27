@@ -9,9 +9,11 @@ import (
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
+	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/adk/session"
 )
 
 type testProfilesService struct {
@@ -74,7 +76,7 @@ func TestNewDispatcher(t *testing.T) {
 	t.Run("requires profiles service", func(t *testing.T) {
 		t.Parallel()
 
-		dispatcher, err := NewDispatcher(nil, &testRegularRunner{})
+		dispatcher, err := NewDispatcher(nil, &testRegularRunner{}, nil)
 
 		require.Error(t, err)
 		assert.Nil(t, dispatcher)
@@ -84,7 +86,7 @@ func TestNewDispatcher(t *testing.T) {
 	t.Run("requires regular runner", func(t *testing.T) {
 		t.Parallel()
 
-		dispatcher, err := NewDispatcher(&testProfilesService{}, nil)
+		dispatcher, err := NewDispatcher(&testProfilesService{}, nil, nil)
 
 		require.Error(t, err)
 		assert.Nil(t, dispatcher)
@@ -97,6 +99,7 @@ func TestNewDispatcher(t *testing.T) {
 		dispatcher, err := newDispatcherWithACPExecutor(
 			&testProfilesService{},
 			&testRegularRunner{},
+			nil,
 			nil,
 		)
 
@@ -155,6 +158,7 @@ func TestDispatcherRun(t *testing.T) {
 					return expectedResult, nil
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -188,6 +192,7 @@ func TestDispatcherRun(t *testing.T) {
 					return expectedResult, nil
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -211,6 +216,7 @@ func TestDispatcherRun(t *testing.T) {
 					panic("Run should not be called")
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -239,6 +245,7 @@ func TestDispatcherRun(t *testing.T) {
 					panic("Run should not be called")
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -269,6 +276,7 @@ func TestDispatcherRun(t *testing.T) {
 					panic("Run should not be called")
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -346,6 +354,7 @@ func TestDispatcherRun(t *testing.T) {
 					}, nil
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -405,6 +414,7 @@ func TestDispatcherRun(t *testing.T) {
 					return nil, expectedErr
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -442,6 +452,7 @@ func TestDispatcherRun(t *testing.T) {
 					panic("Run should not be called")
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -478,6 +489,7 @@ func TestDispatcherRun(t *testing.T) {
 					return nil, expectedErr
 				},
 			},
+			nil,
 		)
 		require.NoError(t, err)
 
@@ -489,6 +501,97 @@ func TestDispatcherRun(t *testing.T) {
 		require.ErrorAs(t, runErr, &dispatchErr)
 		assert.Equal(t, ErrorKindExecution, dispatchErr.Kind)
 		assert.ErrorIs(t, runErr, expectedErr)
+	})
+
+	t.Run("acp stdio success persists replayable session history", func(t *testing.T) {
+		t.Parallel()
+
+		request := newRequest()
+		progressText := fake.Lorem().Sentence(3)
+		finalText := fake.Lorem().Sentence(4)
+		appName := "app-" + fake.Lorem().Word()
+		storage := sessions.NewMemorySessionsStorage()
+		recorder, err := NewSessionRecorder(appName, storage)
+		require.NoError(t, err)
+
+		dispatcher, err := newDispatcherWithACPExecutor(
+			&testProfilesService{
+				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name: request.ProfileName,
+						ExecutionSettings: ap.ExecutionSettings{
+							Mode: ap.ExecutionModeACPStdio,
+							AgentCommand: ap.ACPStdioAgentCommand{
+								Command: "opencode",
+								Args:    []string{"acp"},
+							},
+						},
+					}, nil
+				},
+			},
+			&testRegularRunner{
+				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+					panic("Run should not be called")
+				},
+			},
+			&testACPExecutor{
+				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+					return &codinglane.ACPStdioExecutorResult{
+						Updates: []codinglane.ACPStdioUpdate{
+							{
+								Type: "progress",
+								Payload: json.RawMessage(
+									`{"message":"` + progressText + `"}`,
+								),
+							},
+							{
+								Type: "final",
+								Payload: json.RawMessage(
+									`{"message":"` + finalText + `"}`,
+								),
+							},
+						},
+					}, nil
+				},
+			},
+			recorder,
+		)
+		require.NoError(t, err)
+
+		result, runErr := dispatcher.Run(t.Context(), request)
+
+		require.NoError(t, runErr)
+		require.NotNil(t, result)
+		assert.Equal(t, request.SessionID, result.SessionID())
+
+		streamedEvents := collectSessionEvents(t, result.Events())
+		require.Len(t, streamedEvents, 2)
+		assert.True(t, streamedEvents[0].Partial)
+		assert.True(t, streamedEvents[1].TurnComplete)
+
+		stored, err := storage.Get(t.Context(), &session.GetRequest{
+			AppName:   appName,
+			UserID:    request.UserID,
+			SessionID: request.SessionID,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, stored)
+		require.NotNil(t, stored.Session)
+		require.Equal(t, 2, stored.Session.Events().Len())
+
+		userEvent := rt.MapADKSessionEvent(stored.Session.Events().At(0))
+		require.NotNil(t, userEvent)
+		require.NotNil(t, userEvent.Content)
+		assert.Equal(t, "user", userEvent.Content.Role)
+		require.Len(t, userEvent.Content.Parts, 1)
+		assert.Equal(t, request.Message.Parts[0].Text, userEvent.Content.Parts[0].Text)
+
+		finalEvent := rt.MapADKSessionEvent(stored.Session.Events().At(1))
+		require.NotNil(t, finalEvent)
+		require.NotNil(t, finalEvent.Content)
+		assert.True(t, finalEvent.TurnComplete)
+		require.Len(t, finalEvent.Content.Parts, 1)
+		assert.Equal(t, finalText, finalEvent.Content.Parts[0].Text)
 	})
 }
 

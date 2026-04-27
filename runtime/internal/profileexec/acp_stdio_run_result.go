@@ -20,10 +20,6 @@ func newACPStdioRunResult(
 	return rt.NewRunResult(sessionEventSeq(events), sessionID)
 }
 
-func newACPStdioRunErrorResult(sessionID string, err error) *rt.RunResult {
-	return rt.NewRunResult(sessionEventSeq([]*rt.SessionEvent{acpStdioErrorSessionEvent(err)}), sessionID)
-}
-
 func sessionEventSeq(events []*rt.SessionEvent) iter.Seq2[*rt.SessionEvent, error] {
 	return func(yield func(*rt.SessionEvent, error) bool) {
 		for _, event := range events {

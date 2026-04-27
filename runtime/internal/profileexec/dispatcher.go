@@ -58,23 +58,31 @@ type RunRequest struct {
 
 // Dispatcher resolves agent profiles and dispatches their execution mode.
 type Dispatcher struct {
-	profiles      ap.AgentProfilesService
-	regularRunner regularRunner
-	acpExecutor   acpExecutor
+	profiles        ap.AgentProfilesService
+	regularRunner   regularRunner
+	acpExecutor     acpExecutor
+	sessionRecorder SessionRecorder
 }
 
 // NewDispatcher constructs a profile execution dispatcher.
 func NewDispatcher(
 	profiles ap.AgentProfilesService,
 	regularRunner regularRunner,
+	sessionRecorder SessionRecorder,
 ) (*Dispatcher, error) {
-	return newDispatcherWithACPExecutor(profiles, regularRunner, codinglane.NewACPStdioExecutor())
+	return newDispatcherWithACPExecutor(
+		profiles,
+		regularRunner,
+		codinglane.NewACPStdioExecutor(),
+		sessionRecorder,
+	)
 }
 
 func newDispatcherWithACPExecutor(
 	profiles ap.AgentProfilesService,
 	regularRunner regularRunner,
 	acpExecutor acpExecutor,
+	sessionRecorder SessionRecorder,
 ) (*Dispatcher, error) {
 	if profiles == nil {
 		return nil, errors.New("profiles service is required")
@@ -87,9 +95,10 @@ func newDispatcherWithACPExecutor(
 	}
 
 	return &Dispatcher{
-		profiles:      profiles,
-		regularRunner: regularRunner,
-		acpExecutor:   acpExecutor,
+		profiles:        profiles,
+		regularRunner:   regularRunner,
+		acpExecutor:     acpExecutor,
+		sessionRecorder: sessionRecorder,
 	}, nil
 }
 
@@ -149,10 +158,22 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 
 		acpResult, execErr := d.acpExecutor.Execute(ctx, acpRequest)
 		if execErr != nil {
-			return newACPStdioRunErrorResult(request.SessionID, execErr), nil
+			events := []*rt.SessionEvent{acpStdioErrorSessionEvent(execErr)}
+			recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
+			if recordErr != nil {
+				return nil, recordErr
+			}
+
+			return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
 		}
 
-		return newACPStdioRunResult(request.SessionID, acpResult), nil
+		events := buildACPStdioSessionEvents(acpResult)
+		recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
+		if recordErr != nil {
+			return nil, recordErr
+		}
+
+		return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
 	default:
 		return nil, wrapError(
 			ErrorKindUnsupported,
@@ -160,6 +181,27 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 			fmt.Errorf("profile %q uses unsupported execution mode %q", profile.Name, profile.ExecutionSettings.Mode),
 		)
 	}
+}
+
+func (d *Dispatcher) recordACPStdioEvents(
+	ctx context.Context,
+	profileName string,
+	request RunRequest,
+	events []*rt.SessionEvent,
+) error {
+	if d.sessionRecorder == nil {
+		return nil
+	}
+
+	if err := d.sessionRecorder.Record(ctx, request, events); err != nil {
+		return wrapError(
+			ErrorKindExecution,
+			"record-acp-stdio-session",
+			fmt.Errorf("run profile %q: %w", profileName, err),
+		)
+	}
+
+	return nil
 }
 
 func wrapError(kind ErrorKind, op string, err error) error {

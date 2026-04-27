@@ -33,7 +33,16 @@ func NewProfileRunDispatcher( //nolint:ireturn // public contract returns interf
 	profiles AgentProfilesService,
 	regularRunner AgentRunner,
 ) (ProfileRunDispatcher, error) {
-	dispatcher, err := profileexec.NewDispatcher(profiles, regularRunner)
+	var sessionRecorder profileexec.SessionRecorder
+	if runner, ok := regularRunner.(*Runner); ok {
+		recorder, err := profileexec.NewSessionRecorder(defaultRunnerAppName, runner.sessionsStorage)
+		if err != nil {
+			return nil, fmt.Errorf("create profile run dispatcher: %w", err)
+		}
+		sessionRecorder = recorder
+	}
+
+	dispatcher, err := profileexec.NewDispatcher(profiles, regularRunner, sessionRecorder)
 	if err != nil {
 		return nil, fmt.Errorf("create profile run dispatcher: %w", err)
 	}
