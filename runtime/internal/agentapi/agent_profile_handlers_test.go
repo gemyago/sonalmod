@@ -92,6 +92,13 @@ func TestAgentProfileHandlers(t *testing.T) {
 		return HandlerFromMux(srv, http.NewServeMux())
 	}
 
+	newFileProfilesService := func(t *testing.T) ap.AgentProfilesService {
+		t.Helper()
+		svc, err := ap.NewFileAgentProfilesService(t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+		require.NoError(t, err)
+		return svc
+	}
+
 	makeProfile := func() ap.AgentProfile {
 		return ap.AgentProfile{
 			Name:         "profile-" + fake.Lorem().Word(),
@@ -101,6 +108,26 @@ func TestAgentProfileHandlers(t *testing.T) {
 			ToolRefs:     []string{"tool-a", "tool-b"},
 			ExecutionSettings: ap.ExecutionSettings{
 				DefaultModel: "openai/gpt-4.1",
+			},
+			CreatedAt: time.Now().Add(-time.Hour).UTC().Truncate(time.Second),
+			UpdatedAt: time.Now().UTC().Truncate(time.Second),
+		}
+	}
+
+	makeACPProfile := func() ap.AgentProfile {
+		return ap.AgentProfile{
+			Name:         "profile-" + fake.Lorem().Word(),
+			DisplayName:  fake.Lorem().Word(),
+			Role:         fake.Lorem().Word(),
+			Instructions: fake.Lorem().Sentence(5),
+			ToolRefs:     []string{"tool-a", "tool-b"},
+			ExecutionSettings: ap.ExecutionSettings{
+				Mode: ap.ExecutionModeACPStdio,
+				AgentCommand: ap.ACPStdioAgentCommand{
+					Command: "opencode",
+					Args:    []string{"acp", "--safe"},
+				},
+				Cwd: "/workspace",
 			},
 			CreatedAt: time.Now().Add(-time.Hour).UTC().Truncate(time.Second),
 			UpdatedAt: time.Now().UTC().Truncate(time.Second),
@@ -179,9 +206,53 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusCreated, rec.Code)
-			var resp AgentProfileResponse
+			var resp agentProfileResponsePayload
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 			assert.Equal(t, profile.Name, resp.Name)
+		})
+
+		t.Run("accepts acp-stdio execution settings without default model", func(t *testing.T) {
+			t.Parallel()
+			profile := makeACPProfile()
+			svc := &mockAgentProfilesService{}
+			svc.Test(t)
+			svc.On("Create", mock.Anything, ap.CreateAgentProfileParams{
+				Name:         profile.Name,
+				DisplayName:  profile.DisplayName,
+				Role:         profile.Role,
+				Instructions: profile.Instructions,
+				ToolRefs:     profile.ToolRefs,
+				ExecutionSettings: ap.ExecutionSettings{
+					Mode: ap.ExecutionModeACPStdio,
+					AgentCommand: ap.ACPStdioAgentCommand{
+						Command: "opencode",
+						Args:    []string{"acp", "--safe"},
+					},
+					Cwd: "/workspace",
+				},
+			}).Return(&profile, nil)
+
+			h := newServerWithSvc(t, svc)
+			body := `{"name":"` + profile.Name + `","displayName":"` + profile.DisplayName + `","role":"` +
+				profile.Role + `","instructions":"` + profile.Instructions + `","toolRefs":["tool-a","tool-b"],` +
+				`"executionSettings":{"mode":"acp-stdio","agentCommand":{"command":"opencode","args":["acp","--safe"]},"cwd":"/workspace"}}`
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(body),
+			)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusCreated, rec.Code)
+			var resp agentProfileResponsePayload
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+			assert.Equal(t, "acp-stdio", resp.ExecutionSettings.Mode)
+			assert.Empty(t, resp.ExecutionSettings.DefaultModel)
+			require.NotNil(t, resp.ExecutionSettings.AgentCommand)
+			assert.Equal(t, []string{"acp", "--safe"}, resp.ExecutionSettings.AgentCommand.Args)
+			assert.Equal(t, "/workspace", resp.ExecutionSettings.Cwd)
 		})
 
 		t.Run("returns 400 for malformed JSON", func(t *testing.T) {
@@ -237,6 +308,40 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 			require.Equal(t, http.StatusConflict, rec.Code)
 		})
+
+		t.Run("returns 400 for unsupported execution mode", func(t *testing.T) {
+			t.Parallel()
+			h := newServerWithSvc(t, newFileProfilesService(t))
+			body := `{"name":"profile-a","role":"coder","instructions":"x","executionSettings":{"mode":"remote","defaultModel":"openai/gpt-4.1"}}`
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(body),
+			)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			assert.Contains(t, rec.Body.String(), "execution_settings.mode")
+		})
+
+		t.Run("returns 400 for invalid acp command settings", func(t *testing.T) {
+			t.Parallel()
+			h := newServerWithSvc(t, newFileProfilesService(t))
+			body := `{"name":"profile-a","role":"coder","instructions":"x","executionSettings":{"mode":"acp-stdio","agentCommand":{"command":"opencode","args":["acp"," acp "]}}}`
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPost,
+				"/agent-profiles",
+				strings.NewReader(body),
+			)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			assert.Contains(t, rec.Body.String(), "execution_settings.agent_command.args")
+		})
 	})
 
 	t.Run("GetAgentProfile", func(t *testing.T) {
@@ -255,6 +360,29 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
+		})
+
+		t.Run("returns acp-stdio execution settings", func(t *testing.T) {
+			t.Parallel()
+			profile := makeACPProfile()
+			svc := &mockAgentProfilesService{}
+			svc.Test(t)
+			svc.On("Get", mock.Anything, profile.Name).Return(&profile, nil)
+
+			h := newServerWithSvc(t, svc)
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/agent-profiles/"+profile.Name, nil)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			var resp agentProfileResponsePayload
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+			assert.Equal(t, "acp-stdio", resp.ExecutionSettings.Mode)
+			assert.Empty(t, resp.ExecutionSettings.DefaultModel)
+			require.NotNil(t, resp.ExecutionSettings.AgentCommand)
+			assert.Equal(t, "opencode", resp.ExecutionSettings.AgentCommand.Command)
+			assert.Equal(t, []string{"acp", "--safe"}, resp.ExecutionSettings.AgentCommand.Args)
+			assert.Equal(t, "/workspace", resp.ExecutionSettings.Cwd)
 		})
 
 		t.Run("returns 404 for missing profile", func(t *testing.T) {
@@ -318,9 +446,53 @@ func TestAgentProfileHandlers(t *testing.T) {
 			h.ServeHTTP(rec, req)
 
 			require.Equal(t, http.StatusOK, rec.Code)
-			var resp AgentProfileResponse
+			var resp agentProfileResponsePayload
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
 			assert.Equal(t, updated.Role, resp.Role)
+		})
+
+		t.Run("accepts acp-stdio execution settings without default model", func(t *testing.T) {
+			t.Parallel()
+			profile := makeProfile()
+			updated := makeACPProfile()
+			updated.Name = profile.Name
+			updated.DisplayName = profile.DisplayName
+			svc := &mockAgentProfilesService{}
+			svc.Test(t)
+			svc.On("Update", mock.Anything, profile.Name, ap.UpdateAgentProfileParams{
+				DisplayName:  profile.DisplayName,
+				Role:         updated.Role,
+				Instructions: updated.Instructions,
+				ToolRefs:     updated.ToolRefs,
+				ExecutionSettings: ap.ExecutionSettings{
+					Mode: ap.ExecutionModeACPStdio,
+					AgentCommand: ap.ACPStdioAgentCommand{
+						Command: "opencode",
+						Args:    []string{"acp", "--safe"},
+					},
+					Cwd: "/workspace",
+				},
+			}).Return(&updated, nil)
+
+			h := newServerWithSvc(t, svc)
+			body := `{"displayName":"` + profile.DisplayName + `","role":"` + updated.Role + `","instructions":"` +
+				updated.Instructions + `","toolRefs":["tool-a","tool-b"],` +
+				`"executionSettings":{"mode":"acp-stdio","agentCommand":{"command":"opencode","args":["acp","--safe"]},"cwd":"/workspace"}}`
+			req := httptest.NewRequestWithContext(
+				t.Context(),
+				http.MethodPut,
+				"/agent-profiles/"+profile.Name,
+				strings.NewReader(body),
+			)
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			var resp agentProfileResponsePayload
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+			assert.Equal(t, "acp-stdio", resp.ExecutionSettings.Mode)
+			require.NotNil(t, resp.ExecutionSettings.AgentCommand)
+			assert.Equal(t, []string{"acp", "--safe"}, resp.ExecutionSettings.AgentCommand.Args)
 		})
 
 		t.Run("returns 400 for malformed JSON", func(t *testing.T) {

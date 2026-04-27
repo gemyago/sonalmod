@@ -34,7 +34,7 @@ func (s *AgentAPIServer) ListAgentProfiles(w http.ResponseWriter, r *http.Reques
 func (s *AgentAPIServer) CreateAgentProfile(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req CreateAgentProfileRequest
+	var req createAgentProfileRequestPayload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.logger.DebugContext(ctx, "CreateAgentProfile: decode body", "err", err)
 		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "malformed JSON request body")
@@ -101,7 +101,7 @@ func (s *AgentAPIServer) GetAgentProfile(w http.ResponseWriter, r *http.Request,
 func (s *AgentAPIServer) UpdateAgentProfile(w http.ResponseWriter, r *http.Request, profileName ProfileName) {
 	ctx := r.Context()
 
-	var req UpdateAgentProfileRequest
+	var req updateAgentProfileRequestPayload
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.logger.DebugContext(ctx, "UpdateAgentProfile: decode body", "err", err)
 		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "malformed JSON request body")
