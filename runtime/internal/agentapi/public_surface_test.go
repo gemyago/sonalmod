@@ -24,6 +24,7 @@ func TestPublicSurfaceContract(t *testing.T) {
 		require.Contains(t, spec, "defaultModel:")
 		require.Contains(t, spec, "const: acp-stdio")
 		require.Contains(t, spec, "profileName:")
+		require.Contains(t, spec, "model:")
 
 		require.NotContains(t, spec, "/opencode-bindings")
 		require.NotContains(t, spec, "/opencode-launches")
@@ -39,7 +40,8 @@ func TestPublicSurfaceContract(t *testing.T) {
 		require.Contains(t, client, "AgentProfileExecutionSettings")
 		require.Contains(t, client, "defaultModel: string;")
 		require.Contains(t, client, "mode: \"acp-stdio\";")
-		require.Contains(t, client, "profileName: string;")
+		require.Contains(t, client, "profileName?: string;")
+		require.Contains(t, client, "model?: string;")
 
 		require.NotContains(t, client, "/opencode-bindings")
 		require.NotContains(t, client, "/opencode-launches")

@@ -372,7 +372,7 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Empty(t, rec.Header().Get("Content-Type"))
 		})
 
-		t.Run("missing_profileName_returns_400", func(t *testing.T) {
+		t.Run("missing_profile_and_model_returns_400", func(t *testing.T) {
 			t.Parallel()
 
 			fake := faker.New()
@@ -394,7 +394,39 @@ func TestAgentAPIServer(t *testing.T) {
 			var pd ProblemDetails
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, "profileName is required")
+			assert.Contains(t, *pd.Detail, "model is required when profileName is not provided")
+		})
+
+		t.Run("missing_profileName_uses_request_model", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			modelName := "myprovider/" + fake.Lorem().Word()
+
+			gen := NewMockIDGen()
+			expSID := MockIDGenNextGenerated(gen).String()
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.UserID == userID &&
+					p.SessionID == expSID &&
+					p.Message != nil &&
+					p.Model == modelName
+			})).Return(fakeRunResult(expSID, nil), nil)
+
+			srv := newTestAgentAPIServer(t, m, gen)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"model":%q,"message":{"parts":[{"text":%q}]}}`, modelName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), "sessionBound")
 		})
 
 		t.Run("profileName_dispatches_regular_profile_default_model", func(t *testing.T) {
@@ -461,7 +493,51 @@ func TestAgentAPIServer(t *testing.T) {
 			var pd ProblemDetails
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, "profileName is required")
+			assert.Contains(t, *pd.Detail, "profileName must not be blank")
+		})
+
+		t.Run("profileName_request_model_overrides_regular_profile_default", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			profileName := "profile-" + fake.Lorem().Word()
+			overrideModel := "myprovider/" + fake.Lorem().Word()
+			profileModel := "otherprovider/" + fake.Lorem().Word()
+			gen := NewMockIDGen()
+			expSID := MockIDGenNextGenerated(gen).String()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
+				Name: profileName,
+				ExecutionSettings: ap.ExecutionSettings{
+					DefaultModel: profileModel,
+				},
+			}, nil)
+
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.UserID == userID && p.SessionID == expSID && p.Model == overrideModel
+			})).Return(fakeRunResult(expSID, nil), nil)
+
+			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(
+				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
+				profileName,
+				overrideModel,
+				msg,
+			)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), "sessionBound")
 		})
 
 		t.Run("profileName_without_dispatcher_returns_500", func(t *testing.T) {
@@ -551,6 +627,58 @@ func TestAgentAPIServer(t *testing.T) {
 
 			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
 			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			blocks := parseSSEBlocks(rec.Body.String())
+			require.Len(t, blocks, 3)
+			assert.Equal(t, "sessionBound", blocks[0].event)
+			assert.Equal(t, "agent", blocks[1].event)
+			assert.Equal(t, "done", blocks[2].event)
+		})
+
+		t.Run("acp_profile_ignores_request_model_override", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			profileName := "profile-" + fake.Lorem().Word()
+			overrideModel := "myprovider/" + fake.Lorem().Word()
+			agentText := fake.Lorem().Sentence(4)
+
+			gen := NewMockIDGen()
+			expSID := MockIDGenNextGenerated(gen).String()
+
+			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
+				run: func(_ context.Context, req agent.ProfileRunRequest) (*agent.RunResult, error) {
+					assert.Equal(t, profileName, req.ProfileName)
+					assert.Equal(t, overrideModel, req.Model)
+					assert.Equal(t, userID, req.UserID)
+					assert.Equal(t, expSID, req.SessionID)
+					return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+						_ = yield(&rt.SessionEvent{
+							TurnComplete: true,
+							Content: &rt.SessionEventContent{
+								Role:  "model",
+								Parts: []rt.SessionEventPart{{Text: agentText}},
+							},
+						}, nil)
+					}, expSID), nil
+				},
+			}, gen)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(
+				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
+				profileName,
+				overrideModel,
+				msg,
+			)
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
@@ -1114,7 +1242,7 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, *pd.Detail, "agent run failed")
 		})
 
-		t.Run("missing_profileName_returns_400", func(t *testing.T) {
+		t.Run("missing_profile_and_model_returns_400", func(t *testing.T) {
 			t.Parallel()
 
 			fake := faker.New()
@@ -1137,7 +1265,38 @@ func TestAgentAPIServer(t *testing.T) {
 			var pd ProblemDetails
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, "profileName is required")
+			assert.Contains(t, *pd.Detail, "model is required when profileName is not provided")
+		})
+
+		t.Run("missing_profileName_uses_request_model", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			sessPath := fake.UUID().V4()
+			modelName := "myprovider/" + fake.Lorem().Word()
+
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.UserID == userID &&
+					p.SessionID == sessPath &&
+					p.Message != nil &&
+					p.Model == modelName
+			})).Return(fakeRunResult(sessPath, nil), nil)
+
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"model":%q,"message":{"parts":[{"text":%q}]}}`, modelName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), "sessionBound")
 		})
 
 		t.Run("profileName_dispatches_regular_profile_default_model", func(t *testing.T) {
@@ -1203,7 +1362,7 @@ func TestAgentAPIServer(t *testing.T) {
 			var pd ProblemDetails
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, "profileName is required")
+			assert.Contains(t, *pd.Detail, "profileName must not be blank")
 		})
 
 		t.Run("unknown_profileName_returns_404", func(t *testing.T) {

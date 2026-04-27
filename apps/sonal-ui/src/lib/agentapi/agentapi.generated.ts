@@ -198,7 +198,9 @@ export interface components {
     schemas: {
         AgentRunRequest: {
             /** @description Name of the saved agent profile whose execution settings will be used for this run. */
-            profileName: string;
+            profileName?: string;
+            /** @description Fully-qualified model name (`provider/model-name`) for built-in execution. Optional override for regular profiles; ignored for `acp-stdio`. */
+            model?: string;
             message: components["schemas"]["UserMessageContent"];
         };
         /** @description User message for `POST /agent-runs` / continue run: text parts (always user role; not sent by clients). */

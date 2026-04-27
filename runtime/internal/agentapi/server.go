@@ -47,11 +47,13 @@ type agentRunRequestInput struct {
 	Message     *rt.MessageContent
 	UserID      string
 	ProfileName string
+	Model       string
 }
 
 type agentRunRequestBody struct {
 	Message     UserMessageContent `json:"message"`
 	ProfileName *string            `json:"profileName,omitempty"`
+	Model       *string            `json:"model,omitempty"`
 }
 
 // ServerParams holds dependencies for [NewAgentAPIServer].
@@ -198,14 +200,25 @@ func (s *AgentAPIServer) parseAgentRunRequest(
 		return agentRunRequestInput{}, false
 	}
 
-	if req.ProfileName == nil {
-		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
+	profileName := strings.TrimSpace(stringFromPtr(req.ProfileName))
+	if req.ProfileName != nil && profileName == "" {
+		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName must not be blank")
 		return agentRunRequestInput{}, false
 	}
 
-	profileName := strings.TrimSpace(*req.ProfileName)
-	if profileName == "" {
-		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
+	modelName := strings.TrimSpace(stringFromPtr(req.Model))
+	if req.Model != nil && modelName == "" {
+		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "model must not be blank")
+		return agentRunRequestInput{}, false
+	}
+
+	if profileName == "" && modelName == "" {
+		writeProblemDetails(
+			w,
+			http.StatusBadRequest,
+			"Bad Request",
+			"model is required when profileName is not provided",
+		)
 		return agentRunRequestInput{}, false
 	}
 
@@ -213,6 +226,7 @@ func (s *AgentAPIServer) parseAgentRunRequest(
 		Message:     m,
 		UserID:      userID,
 		ProfileName: profileName,
+		Model:       modelName,
 	}, true
 }
 
@@ -221,6 +235,15 @@ func (s *AgentAPIServer) runAgentRequest(
 	in agentRunRequestInput,
 	sessionID string,
 ) (*rt.RunResult, error) {
+	if in.ProfileName == "" {
+		return s.runner.Run(ctx, rt.RunParams{
+			UserID:    in.UserID,
+			SessionID: sessionID,
+			Message:   in.Message,
+			Model:     in.Model,
+		})
+	}
+
 	if s.profileRuns == nil {
 		return nil, &profileexec.Error{
 			Kind: profileexec.ErrorKindExecution,
@@ -231,10 +254,18 @@ func (s *AgentAPIServer) runAgentRequest(
 
 	return s.profileRuns.Run(ctx, agent.ProfileRunRequest{
 		ProfileName: in.ProfileName,
+		Model:       in.Model,
 		UserID:      in.UserID,
 		SessionID:   sessionID,
 		Message:     in.Message,
 	})
+}
+
+func stringFromPtr(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 func (s *AgentAPIServer) writeAgentRunError(

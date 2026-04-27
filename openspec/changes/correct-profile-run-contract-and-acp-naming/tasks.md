@@ -6,8 +6,8 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 1. Restore Standard Run Request Contract
 
-- [ ] 1.1 Update `runtime/internal/agentapi/openapi.yaml` so `AgentRunRequest` carries `message` plus optional `profileName` and optional `model`, regenerate Go and Svelte API artifacts, and update request-shape tests.
-- [ ] 1.2 Update runtime run-request parsing and dispatch behavior so no-profile requests require `model`, regular profiles use request `model` as an override, ACP stdio profiles ignore request `model`, and add handler tests for the corrected precedence and validation rules.
+- [x] 1.1 Update `runtime/internal/agentapi/openapi.yaml` so `AgentRunRequest` carries `message` plus optional `profileName` and optional `model`, regenerate Go and Svelte API artifacts, and update request-shape tests.
+- [x] 1.2 Update runtime run-request parsing and dispatch behavior so no-profile requests require `model`, regular profiles use request `model` as an override, ACP stdio profiles ignore request `model`, and add handler tests for the corrected precedence and validation rules.
 
 ## 2. Internalize Profile Dispatch
 

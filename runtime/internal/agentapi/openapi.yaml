@@ -482,12 +482,16 @@ components:
   schemas:
     AgentRunRequest:
       type: object
-      required: [profileName, message]
+      required: [message]
       properties:
         profileName:
           type: string
           minLength: 1
           description: Name of the saved agent profile whose execution settings will be used for this run.
+        model:
+          type: string
+          minLength: 1
+          description: Fully-qualified model name (`provider/model-name`) for built-in execution. Optional override for regular profiles; ignored for `acp-stdio`.
         message:
           $ref: '#/components/schemas/UserMessageContent'
       additionalProperties: false

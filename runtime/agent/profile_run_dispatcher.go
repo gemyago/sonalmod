@@ -14,6 +14,7 @@ type MessagePart = internal.MessagePart
 // ProfileRunRequest identifies a profile-backed run to execute.
 type ProfileRunRequest struct {
 	ProfileName string
+	Model       string
 	UserID      string
 	SessionID   string
 	Message     *MessageContent
@@ -55,6 +56,7 @@ func NewProfileRunDispatcher( //nolint:ireturn // public contract returns interf
 func (d *profileRunDispatcher) Run(ctx context.Context, request ProfileRunRequest) (*RunResult, error) {
 	return d.dispatcher.Run(ctx, profileexec.RunRequest{
 		ProfileName: request.ProfileName,
+		Model:       request.Model,
 		UserID:      request.UserID,
 		SessionID:   request.SessionID,
 		Message:     request.Message,

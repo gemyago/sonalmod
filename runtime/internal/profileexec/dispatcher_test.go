@@ -202,6 +202,41 @@ func TestDispatcherRun(t *testing.T) {
 		assert.Same(t, expectedResult, result)
 	})
 
+	t.Run("request model overrides regular profile default model", func(t *testing.T) {
+		t.Parallel()
+
+		request := newRequest()
+		request.Model = fake.Lorem().Word() + "/" + fake.Lorem().Word()
+		defaultModel := fake.Lorem().Word() + "/" + fake.Lorem().Word()
+		expectedResult := makeResult(request.SessionID)
+
+		dispatcher, err := NewDispatcher(
+			&testProfilesService{
+				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name: request.ProfileName,
+						ExecutionSettings: ap.ExecutionSettings{
+							DefaultModel: defaultModel,
+						},
+					}, nil
+				},
+			},
+			&testRegularRunner{
+				run: func(_ context.Context, params rt.RunParams) (*rt.RunResult, error) {
+					assert.Equal(t, request.Model, params.Model)
+					return expectedResult, nil
+				},
+			},
+			nil,
+		)
+		require.NoError(t, err)
+
+		result, runErr := dispatcher.Run(t.Context(), request)
+
+		require.NoError(t, runErr)
+		assert.Same(t, expectedResult, result)
+	})
+
 	t.Run("missing profile name returns validation error", func(t *testing.T) {
 		t.Parallel()
 

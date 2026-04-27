@@ -51,6 +51,7 @@ func (e *Error) Unwrap() error {
 // RunRequest identifies the profile-backed run to execute.
 type RunRequest struct {
 	ProfileName string
+	Model       string
 	UserID      string
 	SessionID   string
 	Message     *rt.MessageContent
@@ -128,11 +129,16 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 
 	switch profile.ExecutionSettings.ModeOrDefault() {
 	case ap.ExecutionModeRegular:
+		modelName := profile.ExecutionSettings.DefaultModel
+		if override := strings.TrimSpace(request.Model); override != "" {
+			modelName = override
+		}
+
 		result, runErr := d.regularRunner.Run(ctx, rt.RunParams{
 			UserID:    request.UserID,
 			SessionID: request.SessionID,
 			Message:   request.Message,
-			Model:     profile.ExecutionSettings.DefaultModel,
+			Model:     modelName,
 		})
 		if runErr != nil {
 			return nil, wrapError(
