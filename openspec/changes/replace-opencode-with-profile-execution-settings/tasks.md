@@ -39,7 +39,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 6. Remove OpenCode Public Surface
 
-- [ ] 6.1 Remove `/opencode-bindings`, `/opencode-bindings/{bindingName}`, and `/opencode-launches` from the OpenAPI contract, regenerate Go and Svelte API artifacts, and update affected tests.
+- [x] 6.1 Remove `/opencode-bindings`, `/opencode-bindings/{bindingName}`, and `/opencode-launches` from the OpenAPI contract, regenerate Go and Svelte API artifacts, and update affected tests.
 - [ ] 6.2 Delete OpenCode binding and launch handlers, mappers, generated-operation tests, persistence services, and bundled backend wiring that are no longer reachable.
 - [ ] 6.3 Remove exported OpenCode aliases, launcher constructors, and binding services from `runtime/agent` and remove OpenCode dependencies from `runtime/httpapi.HandlerArgs`.
 - [ ] 6.4 Rename surviving generic internals from OpenCode-specific names to ACP stdio/profile execution names, keeping OpenCode wording only in executable-specific leaf adapters, fixtures, or historical docs.
