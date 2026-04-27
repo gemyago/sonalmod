@@ -46,16 +46,13 @@ var _ ServerInterface = (*AgentAPIServer)(nil)
 // successful parse, auth, and message mapping. Fields are only valid when
 // [AgentAPIServer.parseAgentRunRequest] returns ok true.
 type agentRunRequestInput struct {
-	Message         *rt.MessageContent
-	UserID          string
-	Model           string
-	ProfileName     string
-	ProfileSelected bool
+	Message     *rt.MessageContent
+	UserID      string
+	ProfileName string
 }
 
 type agentRunRequestBody struct {
 	Message     UserMessageContent `json:"message"`
-	Model       *string            `json:"model,omitempty"`
 	ProfileName *string            `json:"profileName,omitempty"`
 }
 
@@ -207,28 +204,21 @@ func (s *AgentAPIServer) parseAgentRunRequest(
 		return agentRunRequestInput{}, false
 	}
 
-	model := ""
-	if req.Model != nil {
-		model = *req.Model
+	if req.ProfileName == nil {
+		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
+		return agentRunRequestInput{}, false
 	}
 
-	profileName := ""
-	profileSelected := false
-	if req.ProfileName != nil {
-		profileSelected = true
-		profileName = strings.TrimSpace(*req.ProfileName)
-		if profileName == "" {
-			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
-			return agentRunRequestInput{}, false
-		}
+	profileName := strings.TrimSpace(*req.ProfileName)
+	if profileName == "" {
+		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
+		return agentRunRequestInput{}, false
 	}
 
 	return agentRunRequestInput{
-		Message:         m,
-		UserID:          userID,
-		Model:           model,
-		ProfileName:     profileName,
-		ProfileSelected: profileSelected,
+		Message:     m,
+		UserID:      userID,
+		ProfileName: profileName,
 	}, true
 }
 
@@ -237,28 +227,19 @@ func (s *AgentAPIServer) runAgentRequest(
 	in agentRunRequestInput,
 	sessionID string,
 ) (*rt.RunResult, error) {
-	if in.ProfileSelected {
-		if s.profileRuns == nil {
-			return nil, &profileexec.Error{
-				Kind: profileexec.ErrorKindExecution,
-				Op:   "dispatch-profile",
-				Err:  errors.New("profile execution unavailable"),
-			}
+	if s.profileRuns == nil {
+		return nil, &profileexec.Error{
+			Kind: profileexec.ErrorKindExecution,
+			Op:   "dispatch-profile",
+			Err:  errors.New("profile execution unavailable"),
 		}
-
-		return s.profileRuns.Run(ctx, agent.ProfileRunRequest{
-			ProfileName: in.ProfileName,
-			UserID:      in.UserID,
-			SessionID:   sessionID,
-			Message:     in.Message,
-		})
 	}
 
-	return s.runner.Run(ctx, rt.RunParams{
-		UserID:    in.UserID,
-		SessionID: sessionID,
-		Message:   in.Message,
-		Model:     in.Model,
+	return s.profileRuns.Run(ctx, agent.ProfileRunRequest{
+		ProfileName: in.ProfileName,
+		UserID:      in.UserID,
+		SessionID:   sessionID,
+		Message:     in.Message,
 	})
 }
 
