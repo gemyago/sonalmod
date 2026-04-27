@@ -13,6 +13,19 @@ import (
 func TestAgentProfilesAliases(t *testing.T) {
 	require.ErrorIs(t, ErrAgentProfileNotFound, ap.ErrAgentProfileNotFound)
 	require.ErrorIs(t, ErrAgentProfileNameConflict, ap.ErrAgentProfileNameConflict)
+
+	settings := ExecutionSettings{
+		Mode: ExecutionModeACPStdio,
+		AgentCommand: ACPStdioAgentCommand{
+			Command: "opencode",
+			Args:    []string{"acp"},
+		},
+	}
+	require.Equal(t, ap.ExecutionModeACPStdio, settings.ModeOrDefault())
+	require.Equal(t, ap.ACPStdioAgentCommand{
+		Command: "opencode",
+		Args:    []string{"acp"},
+	}, settings.AgentCommand)
 }
 
 func TestNewFileAgentProfilesService(t *testing.T) {

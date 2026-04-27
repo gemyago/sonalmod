@@ -84,7 +84,7 @@ func parseModelName(fqModelName string) (string, string, error) {
 // It parses provider/model, looks up the provider config, manages a per-provider
 // genkit cache (invalidated by UpdatedAt), and creates a new genkit instance when needed.
 //
-//nolint:ireturn // summarize.ModelResolver and LLMAdapterFactory both consume the upstream model.LLM interface.
+//nolint:ireturn // Upstream ADK model resolution uses this interface.
 func (l *ModelsLocator) ResolveModel(ctx context.Context, fqModelName string) (model.LLM, error) {
 	providerName, _, err := parseModelName(fqModelName)
 	if err != nil {

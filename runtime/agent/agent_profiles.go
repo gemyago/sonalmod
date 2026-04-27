@@ -12,6 +12,19 @@ var ErrAgentProfileNotFound = ap.ErrAgentProfileNotFound
 // ErrAgentProfileNameConflict is returned when a profile with the given name already exists.
 var ErrAgentProfileNameConflict = ap.ErrAgentProfileNameConflict
 
+// ExecutionMode identifies how a profile executes.
+type ExecutionMode = ap.ExecutionMode
+
+const (
+	// ExecutionModeRegular routes the profile through the built-in runtime agent.
+	ExecutionModeRegular = ap.ExecutionModeRegular
+	// ExecutionModeACPStdio routes the profile through an ACP-compatible stdio command.
+	ExecutionModeACPStdio = ap.ExecutionModeACPStdio
+)
+
+// ACPStdioAgentCommand stores command defaults used to launch an ACP stdio agent.
+type ACPStdioAgentCommand = ap.ACPStdioAgentCommand
+
 // ExecutionSettings stores runtime-owned execution defaults for a profile.
 type ExecutionSettings = ap.ExecutionSettings
 

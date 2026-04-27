@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 var agentProfileNamePattern = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
@@ -18,10 +19,41 @@ var ErrAgentProfileNotFound = errors.New("agent profile not found")
 // ErrAgentProfileNameConflict is returned when an agent profile with the given name already exists.
 var ErrAgentProfileNameConflict = errors.New("agent profile name already exists")
 
+// ExecutionMode identifies how a profile executes.
+type ExecutionMode string
+
+const (
+	// ExecutionModeRegular routes the profile through the built-in runtime agent.
+	ExecutionModeRegular ExecutionMode = "regular"
+	// ExecutionModeACPStdio routes the profile through an ACP-compatible stdio command.
+	ExecutionModeACPStdio ExecutionMode = "acp-stdio"
+)
+
+// ACPStdioAgentCommand stores command defaults used to launch an ACP stdio agent.
+type ACPStdioAgentCommand struct {
+	Command string
+	Args    []string
+}
+
 // ExecutionSettings stores runtime-owned execution defaults for a profile.
 type ExecutionSettings struct {
+	// Mode selects how the profile executes. Empty is treated as regular.
+	Mode ExecutionMode
 	// DefaultModel is the fully-qualified default model in provider/model form.
 	DefaultModel string
+	// AgentCommand stores ACP stdio process settings for acp-stdio mode.
+	AgentCommand ACPStdioAgentCommand
+	// Cwd is the optional working directory for the ACP stdio agent command.
+	Cwd string
+}
+
+// ModeOrDefault returns the configured execution mode, defaulting omitted mode to regular.
+func (s ExecutionSettings) ModeOrDefault() ExecutionMode {
+	if strings.TrimSpace(string(s.Mode)) == "" {
+		return ExecutionModeRegular
+	}
+
+	return s.Mode
 }
 
 // AgentProfile is a persisted general-purpose agent profile definition.
@@ -172,10 +204,41 @@ func normalizeRoleAndInstructions(role string, instructions string) (string, str
 }
 
 func normalizeExecutionSettings(settings ExecutionSettings) (ExecutionSettings, error) {
+	settings.Mode = ExecutionMode(strings.TrimSpace(string(settings.Mode)))
 	settings.DefaultModel = strings.TrimSpace(settings.DefaultModel)
-	if settings.DefaultModel == "" {
-		return ExecutionSettings{}, errors.New("execution_settings.default_model is required")
+	settings.Cwd = strings.TrimSpace(settings.Cwd)
+
+	switch settings.ModeOrDefault() {
+	case ExecutionModeRegular:
+		if settings.DefaultModel == "" {
+			return ExecutionSettings{}, errors.New("execution_settings.default_model is required")
+		}
+		if hasACPStdioExecutionSettings(settings) {
+			return ExecutionSettings{}, errors.New(
+				"execution_settings.agent_command and execution_settings.cwd are only supported for acp-stdio mode",
+			)
+		}
+	case ExecutionModeACPStdio:
+		if settings.DefaultModel != "" {
+			return ExecutionSettings{}, errors.New(
+				"execution_settings.default_model is only supported for regular mode",
+			)
+		}
+
+		command, err := normalizeACPStdioAgentCommand(settings.AgentCommand)
+		if err != nil {
+			return ExecutionSettings{}, err
+		}
+		if containsControlChars(settings.Cwd) {
+			return ExecutionSettings{}, errors.New("execution_settings.cwd contains control characters")
+		}
+		settings.AgentCommand = command
+	default:
+		return ExecutionSettings{}, errors.New(
+			`execution_settings.mode must be one of "", "regular", or "acp-stdio"`,
+		)
 	}
+
 	return settings, nil
 }
 
@@ -197,4 +260,50 @@ func normalizeToolRefs(toolRefs []string) ([]string, error) {
 	}
 
 	return normalized, nil
+}
+
+func normalizeACPStdioAgentCommand(command ACPStdioAgentCommand) (ACPStdioAgentCommand, error) {
+	command.Command = strings.TrimSpace(command.Command)
+	if command.Command == "" {
+		return ACPStdioAgentCommand{}, errors.New("execution_settings.agent_command.command is required")
+	}
+	if containsControlChars(command.Command) {
+		return ACPStdioAgentCommand{}, errors.New(
+			"execution_settings.agent_command.command contains control characters",
+		)
+	}
+
+	normalizedArgs := make([]string, 0, len(command.Args))
+	for _, arg := range command.Args {
+		trimmed := strings.TrimSpace(arg)
+		if trimmed == "" {
+			return ACPStdioAgentCommand{}, errors.New(
+				"execution_settings.agent_command.args must not contain empty values",
+			)
+		}
+		if containsControlChars(trimmed) {
+			return ACPStdioAgentCommand{}, errors.New(
+				"execution_settings.agent_command.args contain control characters",
+			)
+		}
+		if slices.Contains(normalizedArgs, trimmed) {
+			return ACPStdioAgentCommand{}, errors.New(
+				"execution_settings.agent_command.args must be unique",
+			)
+		}
+		normalizedArgs = append(normalizedArgs, trimmed)
+	}
+
+	command.Args = normalizedArgs
+	return command, nil
+}
+
+func hasACPStdioExecutionSettings(settings ExecutionSettings) bool {
+	return strings.TrimSpace(settings.AgentCommand.Command) != "" ||
+		len(settings.AgentCommand.Args) > 0 ||
+		settings.Cwd != ""
+}
+
+func containsControlChars(value string) bool {
+	return strings.ContainsFunc(value, unicode.IsControl)
 }

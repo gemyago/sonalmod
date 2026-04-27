@@ -70,6 +70,130 @@ func TestAgentProfilesDomainValidation(t *testing.T) {
 		})
 	})
 
+	t.Run("normalizeExecutionSettings supports regular and acp-stdio modes", func(t *testing.T) {
+		t.Run("treats omitted mode as regular", func(t *testing.T) {
+			normalized, err := normalizeExecutionSettings(ExecutionSettings{
+				DefaultModel: " openai/gpt-4.1 ",
+			})
+			require.NoError(t, err)
+			assert.Empty(t, normalized.Mode)
+			assert.Equal(t, ExecutionModeRegular, normalized.ModeOrDefault())
+			assert.Equal(t, "openai/gpt-4.1", normalized.DefaultModel)
+		})
+
+		t.Run("accepts explicit regular mode", func(t *testing.T) {
+			normalized, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode:         ExecutionModeRegular,
+				DefaultModel: " openai/gpt-4.1 ",
+			})
+			require.NoError(t, err)
+			assert.Equal(t, ExecutionModeRegular, normalized.Mode)
+			assert.Equal(t, "openai/gpt-4.1", normalized.DefaultModel)
+		})
+
+		t.Run("accepts acp-stdio mode", func(t *testing.T) {
+			normalized, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode: ExecutionModeACPStdio,
+				AgentCommand: ACPStdioAgentCommand{
+					Command: " opencode ",
+					Args:    []string{" acp ", "--safe"},
+				},
+				Cwd: " /workspace ",
+			})
+			require.NoError(t, err)
+			assert.Equal(t, ExecutionModeACPStdio, normalized.Mode)
+			assert.Equal(t, ACPStdioAgentCommand{
+				Command: "opencode",
+				Args:    []string{"acp", "--safe"},
+			}, normalized.AgentCommand)
+			assert.Equal(t, "/workspace", normalized.Cwd)
+			assert.Empty(t, normalized.DefaultModel)
+		})
+	})
+
+	t.Run("normalizeExecutionSettings rejects invalid execution settings", func(t *testing.T) {
+		t.Run("rejects unsupported mode", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode:         "remote",
+				DefaultModel: "openai/gpt-4.1",
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.mode")
+		})
+
+		t.Run("rejects regular mode without default model", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode: ExecutionModeRegular,
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.default_model")
+		})
+
+		t.Run("rejects regular mode with acp settings", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				DefaultModel: "openai/gpt-4.1",
+				AgentCommand: ACPStdioAgentCommand{
+					Command: "opencode",
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.agent_command")
+		})
+
+		t.Run("rejects acp-stdio mode with regular default model", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode:         ExecutionModeACPStdio,
+				DefaultModel: "openai/gpt-4.1",
+				AgentCommand: ACPStdioAgentCommand{Command: "opencode"},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.default_model")
+		})
+
+		t.Run("rejects acp-stdio mode without command", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode: ExecutionModeACPStdio,
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.agent_command.command")
+		})
+
+		t.Run("rejects acp-stdio mode with empty arg", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode: ExecutionModeACPStdio,
+				AgentCommand: ACPStdioAgentCommand{
+					Command: "opencode",
+					Args:    []string{"acp", " "},
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "execution_settings.agent_command.args")
+		})
+
+		t.Run("rejects acp-stdio mode with duplicate args", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode: ExecutionModeACPStdio,
+				AgentCommand: ACPStdioAgentCommand{
+					Command: "opencode",
+					Args:    []string{"acp", " acp "},
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must be unique")
+		})
+
+		t.Run("rejects acp-stdio mode with control chars", func(t *testing.T) {
+			_, err := normalizeExecutionSettings(ExecutionSettings{
+				Mode: ExecutionModeACPStdio,
+				AgentCommand: ACPStdioAgentCommand{
+					Command: "open\ncode",
+				},
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "control characters")
+		})
+	})
+
 	t.Run("applyProfileUpdate preserves immutable fields", func(t *testing.T) {
 		createdAt := time.Now().Add(-2 * time.Hour).UTC()
 		existing := AgentProfile{

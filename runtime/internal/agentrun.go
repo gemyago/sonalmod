@@ -314,7 +314,7 @@ func sliceToIter(events []*SessionEvent) iter.Seq2[*SessionEvent, error] {
 
 // RunExecutorFactoryFromRunner adapts [runner.New] to [LLMAgentRunnerRunFactory].
 //
-//nolint:ireturn // This adapter must match the consumer-defined LLMRunner abstraction used for tests and orchestration.
+//nolint:ireturn // Consumer code depends on the LLMRunner interface.
 func RunExecutorFactoryFromRunner(cfg runner.Config) (LLMRunner, error) {
 	return runner.New(cfg)
 }
