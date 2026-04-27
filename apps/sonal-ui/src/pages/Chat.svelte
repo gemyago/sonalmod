@@ -307,7 +307,7 @@
     const sessionId = effectiveSessionId()
     runOwningSessionId = sessionId
     const body: AgentRunRequest = {
-      profileName: selectedModel,
+      model: selectedModel,
       message: { parts: [{ text }] },
     }
 

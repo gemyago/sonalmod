@@ -106,7 +106,7 @@
 - When models exist: `<select>` on the **same row** as **Send** (profile left, Send right).
 - Selected value: `localStorage` (`selectedModel`); restored on load if still in the list; otherwise first model selected and persisted.
 - Current source of selectable profiles: `listModels()` until dedicated profile listing is wired for the chat page.
-- Sends: fully-qualified name (`provider/model-name`) as `profileName` on `AgentRunRequest` while the list is valid.
+- Sends: fully-qualified name (`provider/model-name`) as `model` on `AgentRunRequest` while the list is valid.
 
 **Reconnection (URL has `sessionId` on mount)**
 
