@@ -66,3 +66,6 @@ Once implementation of the task is complete, report back the following:
 
 Note: If task verification failed - this means task is not completed.
 
+## Final instruction
+
+Once all tasks are done, follow openspec archival steps for this change and then commit.
