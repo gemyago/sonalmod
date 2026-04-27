@@ -463,10 +463,34 @@ export interface components {
         ProviderListResponse: {
             providers: components["schemas"]["ProviderResponse"][];
         };
-        /** @description Runtime-owned execution defaults for an agent profile. */
-        AgentProfileExecutionSettings: {
+        AgentProfileExecutionSettings: components["schemas"]["AgentProfileRegularExecutionSettings"] | components["schemas"]["AgentProfileACPStdioExecutionSettings"];
+        /** @description Runtime-owned execution defaults for built-in profile execution. */
+        AgentProfileRegularExecutionSettings: {
+            /**
+             * @description Execution mode. Omit for regular built-in execution.
+             * @enum {string}
+             */
+            mode?: "regular";
             /** @description Fully-qualified default model in `provider/model-name` form. */
             defaultModel: string;
+        };
+        /** @description Runtime-owned execution defaults for ACP-compatible stdio profile execution. */
+        AgentProfileACPStdioExecutionSettings: {
+            /**
+             * @description Execution mode for ACP-compatible stdio profiles.
+             * @constant
+             */
+            mode: "acp-stdio";
+            agentCommand: components["schemas"]["ACPStdioAgentCommand"];
+            /** @description Optional working directory used to launch the ACP stdio agent. */
+            cwd?: string;
+        };
+        /** @description Command defaults used to launch an ACP-compatible stdio agent. */
+        ACPStdioAgentCommand: {
+            /** @description Command executable to launch the ACP-compatible stdio agent. */
+            command: string;
+            /** @description Command arguments passed to the ACP-compatible stdio agent executable. */
+            args?: string[];
         };
         /** @description Request body for creating a saved agent profile. */
         CreateAgentProfileRequest: {
