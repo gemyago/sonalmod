@@ -21,9 +21,9 @@ type HandlerArgs struct {
 	ProvidersConfigService agent.ProvidersConfigService
 	// AgentProfilesService is required.
 	AgentProfilesService agent.AgentProfilesService
-	// OpenCodeBindingService is required.
+	// Deprecated: ignored; OpenCode endpoint wiring was removed.
 	OpenCodeBindingService agent.OpenCodeBindingService
-	// OpenCodeLauncher is required.
+	// Deprecated: ignored; OpenCode endpoint wiring was removed.
 	OpenCodeLauncher agent.OpenCodeLauncher
 
 	// ModelsLister is optional. When provided, enables the GET /models endpoint.
@@ -57,12 +57,6 @@ func NewHandler(args HandlerArgs, opts ...HandlerOpt) (http.Handler, error) {
 	if args.AgentProfilesService == nil {
 		return nil, errors.New("agent profiles service is required")
 	}
-	if args.OpenCodeBindingService == nil {
-		return nil, errors.New("opencode binding service is required")
-	}
-	if args.OpenCodeLauncher == nil {
-		return nil, errors.New("opencode launcher is required")
-	}
 
 	hOpts := &handlerOpts{
 		Logger: slog.Default(),
@@ -84,8 +78,6 @@ func NewHandler(args HandlerArgs, opts ...HandlerOpt) (http.Handler, error) {
 		SSEWriter:              agentapi.NewAgentAPISSEWriter(agentapi.NewAgentAPIStreamEventMapper()),
 		ProvidersConfigService: args.ProvidersConfigService,
 		AgentProfilesService:   args.AgentProfilesService,
-		OpenCodeBindingService: args.OpenCodeBindingService,
-		OpenCodeLauncher:       args.OpenCodeLauncher,
 		ModelsLister:           args.ModelsLister,
 	})
 	return agentapi.HandlerFromMux(server, http.NewServeMux()), nil

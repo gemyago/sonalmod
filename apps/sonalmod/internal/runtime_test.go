@@ -64,9 +64,6 @@ func TestNewRuntime(t *testing.T) {
 		require.NotNil(t, runtime)
 		assert.NotNil(t, runtime.Runner)
 		assert.NotNil(t, runtime.HTTPHandler)
-
-		_, statErr := os.Stat(filepath.Join(deps.DataDir, "opencode-bindings"))
-		require.NoError(t, statErr)
 	})
 
 	t.Run("database storage - creates runtime with database backend and migrates profiles", func(t *testing.T) {
@@ -87,17 +84,6 @@ func TestNewRuntime(t *testing.T) {
 		profiles, err := profilesSvc.List(t.Context())
 		require.NoError(t, err)
 		require.Empty(t, profiles)
-
-		bindingsSvc, err := agent.NewDatabaseOpenCodeBindingService(
-			deps.AgentRuntimeDatabaseDSN,
-			rootLogger,
-			deps.AgentRuntimeDatabaseTablePrefix,
-		)
-		require.NoError(t, err)
-
-		bindings, err := bindingsSvc.List(t.Context())
-		require.NoError(t, err)
-		require.Empty(t, bindings)
 	})
 
 	t.Run("database storage - autoMigrate disabled still constructs runtime", func(t *testing.T) {
@@ -117,17 +103,6 @@ func TestNewRuntime(t *testing.T) {
 		require.NoError(t, err)
 
 		_, err = profilesSvc.List(t.Context())
-		require.Error(t, err)
-		require.ErrorContains(t, err, "no such table")
-
-		bindingsSvc, err := agent.NewDatabaseOpenCodeBindingService(
-			deps.AgentRuntimeDatabaseDSN,
-			rootLogger,
-			deps.AgentRuntimeDatabaseTablePrefix,
-		)
-		require.NoError(t, err)
-
-		_, err = bindingsSvc.List(t.Context())
 		require.Error(t, err)
 		require.ErrorContains(t, err, "no such table")
 	})
