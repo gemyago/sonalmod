@@ -12,7 +12,15 @@ import (
 )
 
 type dbExecutionSettings struct {
-	DefaultModel string `json:"defaultModel"`
+	Mode         ExecutionMode           `json:"mode,omitempty"`
+	DefaultModel string                  `json:"defaultModel,omitempty"`
+	AgentCommand *dbACPStdioAgentCommand `json:"agentCommand,omitempty"`
+	Cwd          string                  `json:"cwd,omitempty"`
+}
+
+type dbACPStdioAgentCommand struct {
+	Command string   `json:"command"`
+	Args    []string `json:"args,omitempty"`
 }
 
 // agentProfileModel is the GORM model for persisted agent profiles.
@@ -102,14 +110,12 @@ func (s *DatabaseAgentProfilesService) Create(
 	}
 
 	model := agentProfileModel{
-		Name:         normalized.Name,
-		DisplayName:  normalized.DisplayName,
-		Role:         normalized.Role,
-		Instructions: normalized.Instructions,
-		ToolRefs:     normalized.ToolRefs,
-		ExecutionSettings: dbExecutionSettings{
-			DefaultModel: normalized.ExecutionSettings.DefaultModel,
-		},
+		Name:              normalized.Name,
+		DisplayName:       normalized.DisplayName,
+		Role:              normalized.Role,
+		Instructions:      normalized.Instructions,
+		ToolRefs:          normalized.ToolRefs,
+		ExecutionSettings: executionSettingsToDBModel(normalized.ExecutionSettings),
 	}
 	if err = s.db.Create(&model).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
@@ -145,9 +151,7 @@ func (s *DatabaseAgentProfilesService) Update(
 	model.Role = updated.Role
 	model.Instructions = updated.Instructions
 	model.ToolRefs = updated.ToolRefs
-	model.ExecutionSettings = dbExecutionSettings{
-		DefaultModel: updated.ExecutionSettings.DefaultModel,
-	}
+	model.ExecutionSettings = executionSettingsToDBModel(updated.ExecutionSettings)
 
 	if err = s.db.Save(&model).Error; err != nil {
 		return nil, fmt.Errorf("update agent profile: %w", err)
@@ -171,15 +175,45 @@ func (s *DatabaseAgentProfilesService) Delete(_ context.Context, name string) er
 
 func dbModelToProfile(model agentProfileModel) AgentProfile {
 	return AgentProfile{
-		Name:         model.Name,
-		DisplayName:  model.DisplayName,
-		Role:         model.Role,
-		Instructions: model.Instructions,
-		ToolRefs:     model.ToolRefs,
-		ExecutionSettings: ExecutionSettings{
-			DefaultModel: model.ExecutionSettings.DefaultModel,
-		},
-		CreatedAt: model.CreatedAt,
-		UpdatedAt: model.UpdatedAt,
+		Name:              model.Name,
+		DisplayName:       model.DisplayName,
+		Role:              model.Role,
+		Instructions:      model.Instructions,
+		ToolRefs:          model.ToolRefs,
+		ExecutionSettings: dbExecutionSettingsToDomain(model.ExecutionSettings),
+		CreatedAt:         model.CreatedAt,
+		UpdatedAt:         model.UpdatedAt,
 	}
+}
+
+func executionSettingsToDBModel(settings ExecutionSettings) dbExecutionSettings {
+	model := dbExecutionSettings{
+		Mode:         settings.Mode,
+		DefaultModel: settings.DefaultModel,
+		Cwd:          settings.Cwd,
+	}
+	if settings.ModeOrDefault() == ExecutionModeACPStdio {
+		model.AgentCommand = &dbACPStdioAgentCommand{
+			Command: settings.AgentCommand.Command,
+			Args:    append([]string(nil), settings.AgentCommand.Args...),
+		}
+	}
+
+	return model
+}
+
+func dbExecutionSettingsToDomain(model dbExecutionSettings) ExecutionSettings {
+	settings := ExecutionSettings{
+		Mode:         model.Mode,
+		DefaultModel: model.DefaultModel,
+		Cwd:          model.Cwd,
+	}
+	if model.AgentCommand != nil {
+		settings.AgentCommand = ACPStdioAgentCommand{
+			Command: model.AgentCommand.Command,
+			Args:    append([]string(nil), model.AgentCommand.Args...),
+		}
+	}
+
+	return settings
 }

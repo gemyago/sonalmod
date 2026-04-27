@@ -1,6 +1,7 @@
 package agentprofiles
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"testing"
@@ -36,6 +37,28 @@ func TestDatabaseAgentProfilesService(t *testing.T) {
 				DefaultModel: "provider/model",
 			},
 		}
+	}
+
+	readStoredExecutionSettings := func(
+		t *testing.T,
+		svc *DatabaseAgentProfilesService,
+		name string,
+	) map[string]any {
+		t.Helper()
+
+		var raw string
+		require.NoError(
+			t,
+			svc.db.Raw(
+				"SELECT execution_settings FROM agent_profiles WHERE name = ?",
+				name,
+			).Scan(&raw).Error,
+		)
+		require.NotEmpty(t, raw)
+
+		var payload map[string]any
+		require.NoError(t, json.Unmarshal([]byte(raw), &payload))
+		return payload
 	}
 
 	t.Run("NewDatabaseAgentProfilesService", func(t *testing.T) {
@@ -187,6 +210,126 @@ func TestDatabaseAgentProfilesService(t *testing.T) {
 		assert.Equal(t, created.ExecutionSettings, loaded.ExecutionSettings)
 		assert.Equal(t, created.CreatedAt.UnixNano(), loaded.CreatedAt.UnixNano())
 		assert.Equal(t, created.UpdatedAt.UnixNano(), loaded.UpdatedAt.UnixNano())
+	})
+
+	t.Run("round-trips execution settings variants", func(t *testing.T) {
+		t.Run("explicit regular mode persists execution settings mode", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+
+			created, err := svc.Create(t.Context(), CreateAgentProfileParams{
+				Name:         fake.Lexify("profile-????????"),
+				DisplayName:  fake.Person().Name(),
+				Role:         "assistant",
+				Instructions: fake.Lorem().Sentence(8),
+				ToolRefs:     []string{"tool.read"},
+				ExecutionSettings: ExecutionSettings{
+					Mode:         ExecutionModeRegular,
+					DefaultModel: "provider/model",
+				},
+			})
+			require.NoError(t, err)
+
+			stored := readStoredExecutionSettings(t, svc, created.Name)
+			assert.Equal(t, string(ExecutionModeRegular), stored["mode"])
+			assert.Equal(t, "provider/model", stored["defaultModel"])
+			assert.NotContains(t, stored, "agentCommand")
+			assert.NotContains(t, stored, "cwd")
+
+			reloaded, err := svc.Get(t.Context(), created.Name)
+			require.NoError(t, err)
+			assert.Equal(t, created.ExecutionSettings, reloaded.ExecutionSettings)
+		})
+
+		t.Run("acp-stdio mode persists command settings", func(t *testing.T) {
+			svc := makeService(t, ":memory:", "")
+
+			created, err := svc.Create(t.Context(), CreateAgentProfileParams{
+				Name:         fake.Lexify("profile-????????"),
+				DisplayName:  fake.Person().Name(),
+				Role:         "assistant",
+				Instructions: fake.Lorem().Sentence(8),
+				ToolRefs:     []string{"tool.read"},
+				ExecutionSettings: ExecutionSettings{
+					Mode: ExecutionModeACPStdio,
+					AgentCommand: ACPStdioAgentCommand{
+						Command: "opencode",
+						Args:    []string{"acp", "--safe"},
+					},
+					Cwd: "/workspace",
+				},
+			})
+			require.NoError(t, err)
+
+			stored := readStoredExecutionSettings(t, svc, created.Name)
+			assert.Equal(t, string(ExecutionModeACPStdio), stored["mode"])
+			assert.Equal(t, "/workspace", stored["cwd"])
+			assert.NotContains(t, stored, "defaultModel")
+			require.Contains(t, stored, "agentCommand")
+			assert.Equal(t, map[string]any{
+				"command": "opencode",
+				"args":    []any{"acp", "--safe"},
+			}, stored["agentCommand"])
+
+			reloaded, err := svc.Get(t.Context(), created.Name)
+			require.NoError(t, err)
+			assert.Equal(t, created.ExecutionSettings, reloaded.ExecutionSettings)
+		})
+	})
+
+	t.Run("AutoMigrate preserves existing regular records", func(t *testing.T) {
+		svc, err := NewDatabaseAgentProfilesService(":memory:", testLogger(t), "")
+		require.NoError(t, err)
+
+		require.NoError(t, svc.db.Exec(`
+			CREATE TABLE agent_profiles (
+				name TEXT PRIMARY KEY,
+				display_name TEXT,
+				role TEXT NOT NULL,
+				instructions TEXT NOT NULL,
+				tool_refs TEXT,
+				execution_settings TEXT,
+				created_at DATETIME,
+				updated_at DATETIME
+			)
+		`).Error)
+
+		name := fake.Lexify("profile-????????")
+		createdAt := time.Now().UTC().Add(-time.Minute).Round(0)
+		updatedAt := createdAt.Add(2 * time.Second)
+
+		toolRefsJSON, err := json.Marshal([]string{"tool.read"})
+		require.NoError(t, err)
+		execSettingsJSON, err := json.Marshal(map[string]any{
+			"defaultModel": "provider/model",
+		})
+		require.NoError(t, err)
+
+		require.NoError(
+			t,
+			svc.db.Exec(
+				`INSERT INTO agent_profiles
+					(name, display_name, role, instructions, tool_refs, execution_settings, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+				name,
+				fake.Person().Name(),
+				"assistant",
+				fake.Lorem().Sentence(8),
+				string(toolRefsJSON),
+				string(execSettingsJSON),
+				createdAt,
+				updatedAt,
+			).Error,
+		)
+
+		require.NoError(t, svc.AutoMigrate())
+
+		profile, err := svc.Get(t.Context(), name)
+		require.NoError(t, err)
+		assert.Equal(t, ExecutionSettings{
+			DefaultModel: "provider/model",
+		}, profile.ExecutionSettings)
+		assert.Equal(t, createdAt.UnixNano(), profile.CreatedAt.UnixNano())
+		assert.Equal(t, updatedAt.UnixNano(), profile.UpdatedAt.UnixNano())
 	})
 
 	t.Run("validation and database error paths", func(t *testing.T) {
