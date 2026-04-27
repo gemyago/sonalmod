@@ -19,10 +19,6 @@ tmp
 .opencode
 .codex
 
-# Ignore openspec stuff for now
-# Not sure if it's useful to keep it
-openspec
-
 # Node stuff
 node_modules
 

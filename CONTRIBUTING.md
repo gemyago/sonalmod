@@ -11,7 +11,11 @@ Please have the following tools installed:
 
 [OpenSpec](https://github.com/fission-ai/openspec) - good for structured flow. Use `openspec init`. Not committing to the repo for now.
 
-[GSD](https://github.com/gsd-build/get-shit-done) - not sure if it will stick around, but for now it is what we use.
+[GSD](https://github.com/gsd-build/get-shit-done) - not sure if it will stick around, but for now it is what we use:
+```sh
+# Use your agent if needed
+npx get-shit-done-cc@latest --local --codex --opencode
+```
 
 Also tried:
 - BMAD - very complex, so we skipped it for now.
