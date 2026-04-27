@@ -47,5 +47,5 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 ## 7. Verification and Documentation
 
 - [x] 7.1 Update runtime and app AGENTS or module docs if public wiring, commands, or architecture notes changed during implementation.
-- [ ] 7.2 Run `make affected-lint-test` from the repository root and fix all lint, test, generation, or API drift failures.
+- [x] 7.2 Run `make affected-lint-test` from the repository root and fix all lint, test, generation, or API drift failures.
 - [ ] 7.3 Verify the final OpenAPI and generated clients expose profile execution settings and standard profile-based runs, with no OpenCode public endpoints or exported runtime symbols.
