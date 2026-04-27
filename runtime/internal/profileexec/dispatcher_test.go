@@ -2,11 +2,13 @@ package profileexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
+	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,6 +57,17 @@ func (r *testRegularRunner) Run(ctx context.Context, params rt.RunParams) (*rt.R
 	return r.run(ctx, params)
 }
 
+type testACPExecutor struct {
+	execute func(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
+}
+
+func (e *testACPExecutor) Execute(
+	ctx context.Context,
+	request codinglane.ACPStdioExecutorRequest,
+) (*codinglane.ACPStdioExecutorResult, error) {
+	return e.execute(ctx, request)
+}
+
 func TestNewDispatcher(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +89,20 @@ func TestNewDispatcher(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, dispatcher)
 		assert.ErrorContains(t, err, "regular runner is required")
+	})
+
+	t.Run("requires ACP stdio executor", func(t *testing.T) {
+		t.Parallel()
+
+		dispatcher, err := newDispatcherWithACPExecutor(
+			&testProfilesService{},
+			&testRegularRunner{},
+			nil,
+		)
+
+		require.Error(t, err)
+		assert.Nil(t, dispatcher)
+		assert.ErrorContains(t, err, "ACP stdio executor is required")
 	})
 }
 
@@ -260,14 +287,27 @@ func TestDispatcherRun(t *testing.T) {
 		t.Parallel()
 
 		request := newRequest()
+		progressText := fake.Lorem().Sentence(3)
+		finalText := fake.Lorem().Sentence(4)
 
-		dispatcher, err := NewDispatcher(
+		dispatcher, err := newDispatcherWithACPExecutor(
 			&testProfilesService{
 				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
 					return &ap.AgentProfile{
-						Name: request.ProfileName,
+						Name:         request.ProfileName,
+						Role:         "coding-agent",
+						Instructions: fake.Lorem().Sentence(5),
+						ToolRefs: []string{
+							fake.Lorem().Word(),
+							fake.Lorem().Word(),
+						},
 						ExecutionSettings: ap.ExecutionSettings{
 							Mode: ap.ExecutionModeACPStdio,
+							AgentCommand: ap.ACPStdioAgentCommand{
+								Command: "opencode",
+								Args:    []string{"acp"},
+							},
+							Cwd: "/workspace",
 						},
 					}, nil
 				},
@@ -277,16 +317,108 @@ func TestDispatcherRun(t *testing.T) {
 					panic("Run should not be called")
 				},
 			},
+			&testACPExecutor{
+				execute: func(_ context.Context, req codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+					assert.Equal(t, ap.ExecutionModeACPStdio, req.ExecutionSettings.ModeOrDefault())
+					assert.Contains(t, req.Prompt, request.Message.Parts[0].Text)
+
+					return &codinglane.ACPStdioExecutorResult{
+						SessionID: fake.UUID().V4(),
+						PromptResult: json.RawMessage(
+							`{"message":"` + fake.Lorem().Sentence(2) + `"}`,
+						),
+						Updates: []codinglane.ACPStdioUpdate{
+							{
+								SessionID: fake.UUID().V4(),
+								Type:      "progress",
+								Payload: json.RawMessage(
+									`{"type":"progress","message":"` + progressText + `"}`,
+								),
+							},
+							{
+								SessionID: fake.UUID().V4(),
+								Type:      "final",
+								Payload: json.RawMessage(
+									`{"type":"final","message":"` + finalText + `"}`,
+								),
+							},
+						},
+					}, nil
+				},
+			},
 		)
 		require.NoError(t, err)
 
 		result, runErr := dispatcher.Run(t.Context(), request)
 
-		require.Error(t, runErr)
-		assert.Nil(t, result)
-		var dispatchErr *Error
-		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, ErrorKindUnsupported, dispatchErr.Kind)
+		require.NoError(t, runErr)
+		require.NotNil(t, result)
+		assert.Equal(t, request.SessionID, result.SessionID())
+
+		events := collectSessionEvents(t, result.Events())
+		require.Len(t, events, 2)
+		assert.True(t, events[0].Partial)
+		assert.False(t, events[0].TurnComplete)
+		require.NotNil(t, events[0].Content)
+		assert.Equal(t, "model", events[0].Content.Role)
+		require.Len(t, events[0].Content.Parts, 1)
+		assert.Equal(t, progressText, events[0].Content.Parts[0].Text)
+
+		assert.False(t, events[1].Partial)
+		assert.True(t, events[1].TurnComplete)
+		require.NotNil(t, events[1].Content)
+		require.Len(t, events[1].Content.Parts, 1)
+		assert.Equal(t, finalText, events[1].Content.Parts[0].Text)
+	})
+
+	t.Run("acp stdio execution failure returns stream error event", func(t *testing.T) {
+		t.Parallel()
+
+		request := newRequest()
+		expectedErr := &codinglane.ACPStdioError{
+			Kind: codinglane.ACPStdioErrorKindSubprocess,
+			Op:   "start-subprocess",
+			Err:  errors.New(fake.Lorem().Sentence(4)),
+		}
+
+		dispatcher, err := newDispatcherWithACPExecutor(
+			&testProfilesService{
+				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name: request.ProfileName,
+						ExecutionSettings: ap.ExecutionSettings{
+							Mode: ap.ExecutionModeACPStdio,
+							AgentCommand: ap.ACPStdioAgentCommand{
+								Command: "opencode",
+							},
+						},
+					}, nil
+				},
+			},
+			&testRegularRunner{
+				run: func(context.Context, rt.RunParams) (*rt.RunResult, error) {
+					panic("Run should not be called")
+				},
+			},
+			&testACPExecutor{
+				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+					return nil, expectedErr
+				},
+			},
+		)
+		require.NoError(t, err)
+
+		result, runErr := dispatcher.Run(t.Context(), request)
+
+		require.NoError(t, runErr)
+		require.NotNil(t, result)
+		assert.Equal(t, request.SessionID, result.SessionID())
+
+		events := collectSessionEvents(t, result.Events())
+		require.Len(t, events, 1)
+		assert.Equal(t, "acp-stdio-subprocess", events[0].ErrorCode)
+		assert.Contains(t, events[0].ErrorMessage, "ACP stdio agent failed to start")
+		assert.Contains(t, events[0].ErrorMessage, expectedErr.Err.Error())
 	})
 
 	t.Run("unknown execution mode returns unsupported error", func(t *testing.T) {
@@ -358,6 +490,18 @@ func TestDispatcherRun(t *testing.T) {
 		assert.Equal(t, ErrorKindExecution, dispatchErr.Kind)
 		assert.ErrorIs(t, runErr, expectedErr)
 	})
+}
+
+func collectSessionEvents(t *testing.T, seq func(func(*rt.SessionEvent, error) bool)) []*rt.SessionEvent {
+	t.Helper()
+
+	events := make([]*rt.SessionEvent, 0)
+	for event, err := range seq {
+		require.NoError(t, err)
+		events = append(events, event)
+	}
+
+	return events
 }
 
 func TestWrapError(t *testing.T) {

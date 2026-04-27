@@ -20,6 +20,7 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	"github.com/gemyago/sonalmod/runtime/internal/llmproviders"
+	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -70,6 +71,24 @@ func TestAgentAPIServer(t *testing.T) {
 	newTestAgentAPIServer := func(t *testing.T, runner agent.AgentRunner, gen IDGen) *AgentAPIServer {
 		t.Helper()
 		return newTestAgentAPIServerWithProfiles(t, runner, gen, nil)
+	}
+	newTestAgentAPIServerWithDispatcher := func(
+		t *testing.T,
+		dispatcher agent.ProfileRunDispatcher,
+		gen IDGen,
+	) *AgentAPIServer {
+		t.Helper()
+
+		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+		return NewAgentAPIServer(ServerParams{
+			Logger:                 log,
+			IDGen:                  gen,
+			RequestMapper:          NewAgentAPIRequestMapper(),
+			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
+			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
+			ProfileRunDispatcher:   dispatcher,
+			AgentProfilesService:   &mockAgentProfilesService{},
+		})
 	}
 
 	t.Run("StartAgentRun", func(t *testing.T) {
@@ -405,6 +424,31 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, *pd.Detail, "profileName is required")
 		})
 
+		t.Run("profileName_without_dispatcher_returns_500", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			profileName := "profile-" + fake.Lorem().Word()
+
+			srv := newTestAgentAPIServerWithDispatcher(t, nil, NewMockIDGen())
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusInternalServerError, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, "agent run failed")
+		})
+
 		t.Run("unknown_profileName_returns_404", func(t *testing.T) {
 			t.Parallel()
 
@@ -434,24 +478,34 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, *pd.Detail, "agent profile not found")
 		})
 
-		t.Run("unsupported_profileName_returns_400", func(t *testing.T) {
+		t.Run("acp_profile_streams_standard_sse", func(t *testing.T) {
 			t.Parallel()
 
 			fake := faker.New()
 			userID := fake.Internet().User()
 			msg := fake.Lorem().Sentence(3)
 			profileName := "profile-" + fake.Lorem().Word()
+			agentText := fake.Lorem().Sentence(4)
 
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					Mode: ap.ExecutionModeACPStdio,
+			gen := NewMockIDGen()
+			expSID := MockIDGenNextGenerated(gen).String()
+
+			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
+				run: func(_ context.Context, req agent.ProfileRunRequest) (*agent.RunResult, error) {
+					assert.Equal(t, profileName, req.ProfileName)
+					assert.Equal(t, userID, req.UserID)
+					assert.Equal(t, expSID, req.SessionID)
+					return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+						_ = yield(&rt.SessionEvent{
+							TurnComplete: true,
+							Content: &rt.SessionEventContent{
+								Role:  "model",
+								Parts: []rt.SessionEventPart{{Text: agentText}},
+							},
+						}, nil)
+					}, expSID), nil
 				},
-			}, nil).Once()
-
-			m := agent.NewMockAgentRunner(t)
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			}, gen)
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -461,11 +515,12 @@ func TestAgentAPIServer(t *testing.T) {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
 
-			require.Equal(t, http.StatusBadRequest, rec.Code)
-			var pd ProblemDetails
-			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
-			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, string(ap.ExecutionModeACPStdio))
+			require.Equal(t, http.StatusOK, rec.Code)
+			blocks := parseSSEBlocks(rec.Body.String())
+			require.Len(t, blocks, 3)
+			assert.Equal(t, "sessionBound", blocks[0].event)
+			assert.Equal(t, "agent", blocks[1].event)
+			assert.Equal(t, "done", blocks[2].event)
 		})
 
 		t.Run("integration_realAgentRunner", func(t *testing.T) {
@@ -1002,7 +1057,48 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, *pd.Detail, "agent profile not found")
 		})
 
-		t.Run("unsupported_profileName_returns_400", func(t *testing.T) {
+		t.Run("acp_profile_streams_standard_error", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			sessPath := fake.UUID().V4()
+			profileName := "profile-" + fake.Lorem().Word()
+			streamErr := fake.Lorem().Sentence(4)
+
+			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
+				run: func(_ context.Context, req agent.ProfileRunRequest) (*agent.RunResult, error) {
+					assert.Equal(t, profileName, req.ProfileName)
+					assert.Equal(t, userID, req.UserID)
+					assert.Equal(t, sessPath, req.SessionID)
+					return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+						_ = yield(&rt.SessionEvent{
+							ErrorCode:    "acp-stdio-protocol",
+							ErrorMessage: streamErr,
+						}, nil)
+					}, sessPath), nil
+				},
+			}, NewMockIDGen())
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			blocks := parseSSEBlocks(rec.Body.String())
+			require.Len(t, blocks, 3)
+			assert.Equal(t, "sessionBound", blocks[0].event)
+			assert.Equal(t, "error", blocks[1].event)
+			assert.Equal(t, "done", blocks[2].event)
+			assert.Contains(t, blocks[1].data, streamErr)
+		})
+
+		t.Run("profile_dispatch_validation_error_returns_400", func(t *testing.T) {
 			t.Parallel()
 
 			fake := faker.New()
@@ -1011,16 +1107,15 @@ func TestAgentAPIServer(t *testing.T) {
 			sessPath := fake.UUID().V4()
 			profileName := "profile-" + fake.Lorem().Word()
 
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					Mode: ap.ExecutionModeACPStdio,
+			srv := newTestAgentAPIServerWithDispatcher(t, stubProfileRunDispatcher{
+				run: func(context.Context, agent.ProfileRunRequest) (*agent.RunResult, error) {
+					return nil, &profileexec.Error{
+						Kind: profileexec.ErrorKindUnsupported,
+						Op:   "dispatch-profile",
+						Err:  errors.New("unsupported profile"),
+					}
 				},
-			}, nil).Once()
-
-			m := agent.NewMockAgentRunner(t)
-			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			}, NewMockIDGen())
 			mux := http.NewServeMux()
 			h := HandlerFromMux(srv, mux)
 
@@ -1034,13 +1129,79 @@ func TestAgentAPIServer(t *testing.T) {
 			var pd ProblemDetails
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, string(ap.ExecutionModeACPStdio))
+			assert.Contains(t, *pd.Detail, "unsupported profile")
+		})
+	})
+
+	t.Run("ReadSession", func(t *testing.T) {
+		t.Run("blank_session_id_returns_400", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
+
+			req := httptest.NewRequestWithContext(
+				callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID}),
+				http.MethodGet,
+				"/sessions/%20%20",
+				nil,
+			)
+			rec := httptest.NewRecorder()
+
+			srv.ReadSession(rec, req, "   ")
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			assert.Contains(t, rec.Body.String(), "sessionId is required")
+		})
+
+		t.Run("stream_error_is_written_to_sse", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			sessionID := fake.UUID().V4()
+
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().ReadSession(mock.Anything, mock.Anything).Return(
+				rt.NewReadSessionResult(sessionID, false, func(yield func(*rt.SessionEvent, error) bool) {
+					_ = yield(nil, errors.New("history failed"))
+				}),
+				nil,
+			)
+
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
+			req := httptest.NewRequestWithContext(
+				callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID}),
+				http.MethodGet,
+				"/sessions/"+sessionID,
+				nil,
+			)
+			rec := httptest.NewRecorder()
+
+			srv.ReadSession(rec, req, sessionID)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), "event: error")
 		})
 	})
 }
 
 // smokeIntegrationFakeLLM implements model.LLM for wiring *AgentRunner through HTTP without a live LLM (same pattern as internal/agentrun_test.go fakeModel).
 type smokeIntegrationFakeLLM struct{ name string }
+
+type stubProfileRunDispatcher struct {
+	run func(ctx context.Context, request agent.ProfileRunRequest) (*agent.RunResult, error)
+}
+
+func (d stubProfileRunDispatcher) Run(
+	ctx context.Context,
+	request agent.ProfileRunRequest,
+) (*agent.RunResult, error) {
+	return d.run(ctx, request)
+}
 
 func (m *smokeIntegrationFakeLLM) Name() string {
 	if m.name != "" {

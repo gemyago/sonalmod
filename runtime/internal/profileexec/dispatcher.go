@@ -8,10 +8,15 @@ import (
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
+	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 )
 
 type regularRunner interface {
 	Run(ctx context.Context, params rt.RunParams) (*rt.RunResult, error)
+}
+
+type acpExecutor interface {
+	Execute(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
 }
 
 // ErrorKind classifies profile execution dispatch failures.
@@ -55,6 +60,7 @@ type RunRequest struct {
 type Dispatcher struct {
 	profiles      ap.AgentProfilesService
 	regularRunner regularRunner
+	acpExecutor   acpExecutor
 }
 
 // NewDispatcher constructs a profile execution dispatcher.
@@ -62,16 +68,28 @@ func NewDispatcher(
 	profiles ap.AgentProfilesService,
 	regularRunner regularRunner,
 ) (*Dispatcher, error) {
+	return newDispatcherWithACPExecutor(profiles, regularRunner, codinglane.NewACPStdioExecutor())
+}
+
+func newDispatcherWithACPExecutor(
+	profiles ap.AgentProfilesService,
+	regularRunner regularRunner,
+	acpExecutor acpExecutor,
+) (*Dispatcher, error) {
 	if profiles == nil {
 		return nil, errors.New("profiles service is required")
 	}
 	if regularRunner == nil {
 		return nil, errors.New("regular runner is required")
 	}
+	if acpExecutor == nil {
+		return nil, errors.New("ACP stdio executor is required")
+	}
 
 	return &Dispatcher{
 		profiles:      profiles,
 		regularRunner: regularRunner,
+		acpExecutor:   acpExecutor,
 	}, nil
 }
 
@@ -117,11 +135,24 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 
 		return result, nil
 	case ap.ExecutionModeACPStdio:
-		return nil, wrapError(
-			ErrorKindUnsupported,
-			"dispatch-acp-stdio-profile",
-			fmt.Errorf("profile %q uses execution mode %q", profile.Name, ap.ExecutionModeACPStdio),
+		acpRequest, mapErr := codinglane.MapACPStdioExecutorRequest(
+			*profile,
+			messageContentText(request.Message),
 		)
+		if mapErr != nil {
+			return nil, wrapError(
+				ErrorKindExecution,
+				"map-acp-stdio-request",
+				fmt.Errorf("run profile %q: %w", profile.Name, mapErr),
+			)
+		}
+
+		acpResult, execErr := d.acpExecutor.Execute(ctx, acpRequest)
+		if execErr != nil {
+			return newACPStdioRunErrorResult(request.SessionID, execErr), nil
+		}
+
+		return newACPStdioRunResult(request.SessionID, acpResult), nil
 	default:
 		return nil, wrapError(
 			ErrorKindUnsupported,

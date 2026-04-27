@@ -342,14 +342,16 @@ func (s *fileSession) UserID() string {
 	return s.userID
 }
 
-func (s *fileSession) State() session.State { //nolint:ireturn // The ADK session contract returns an interface here.
+//nolint:ireturn // The ADK session contract returns an interface here.
+func (s *fileSession) State() session.State {
 	return &fileSessionState{
 		mu:    &s.mu,
 		state: s.state,
 	}
 }
 
-func (s *fileSession) Events() session.Events { //nolint:ireturn // The ADK session contract returns an interface here.
+//nolint:ireturn // The ADK session contract returns an interface here.
+func (s *fileSession) Events() session.Events {
 	return fileSessionEvents(s.events)
 }
 
