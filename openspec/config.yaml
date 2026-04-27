@@ -19,6 +19,19 @@ schema: spec-driven
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
 
+# To tweak models used by orchestrator, create orchestrator-config.yaml
+# And use below template to tweak which models to use. This can help to save the budget
+# sub-agents:
+#   implementer:
+#     model: gpt-5.3-codex
+#     reasoning_effort: medium
+#   verifier:
+#     model: gpt-5.4-mini
+#     reasoning_effort: medium
+#   fixer:
+#     model: gpt-5.3-codex
+#     reasoning_effort: high
+
 rules:
   tasks:
     - |
