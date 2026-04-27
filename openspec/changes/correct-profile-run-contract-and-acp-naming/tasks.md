@@ -17,8 +17,8 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 3. Undo UI Contract Drift
 
-- [ ] 3.1 Regenerate the Svelte API client, revert Sonal UI standard chat submission to send `model` instead of `profileName`, and update affected chat/client tests.
-- [ ] 3.2 Update UI/runtime docs that currently describe model selection as `profileName`-based submission.
+- [x] 3.1 Regenerate the Svelte API client, revert Sonal UI standard chat submission to send `model` instead of `profileName`, and update affected chat/client tests.
+- [x] 3.2 Update UI/runtime docs that currently describe model selection as `profileName`-based submission.
 
 ## 4. Finish ACP Naming Cleanup
 
@@ -27,6 +27,6 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 5. Verification
 
-- [ ] 5.1 Update runtime and app AGENTS or architecture docs if the internalized dispatch wiring or corrected regular-profile behavior changes their documented public contract.
-- [ ] 5.2 Run `make affected-lint-test` from the repository root and fix all lint, test, generation, or API drift failures.
-- [ ] 5.3 Verify the final OpenAPI and generated clients expose optional `profileName` plus request-level `model`, selected regular profiles affect built-in runner identity/instructions, the public runtime surface exports no `ProfileRunDispatcher`, and generic ACP stdio internals no longer use stale `opencode` naming.
+- [x] 5.1 Update runtime and app AGENTS or architecture docs if the internalized dispatch wiring or corrected regular-profile behavior changes their documented public contract.
+- [x] 5.2 Run `make affected-lint-test` from the repository root and fix all lint, test, generation, or API drift failures.
+- [x] 5.3 Verify the final OpenAPI and generated clients expose optional `profileName` plus request-level `model`, selected regular profiles affect built-in runner identity/instructions, the public runtime surface exports no `ProfileRunDispatcher`, and generic ACP stdio internals no longer use stale `opencode` naming.
