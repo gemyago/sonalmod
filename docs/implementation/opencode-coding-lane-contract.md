@@ -1,59 +1,24 @@
-# OpenCode Coding Lane Contract
+# OpenCode Coding Lane Contract (Superseded)
 
-This document defines the runtime API contract and service boundary for the OpenCode coding lane introduced in Phase 3 Plan 03-03.
+This document is retained as historical context for the earlier OpenCode-specific
+runtime lane. The active public contract was replaced by profile execution
+settings in `replace-opencode-with-profile-execution-settings`.
 
-## Runtime Endpoints
+## Current Runtime Contract
 
-The runtime HTTP API exposes the following OpenCode endpoints (mounted under the runtime API base path):
+- Standard runtime execution uses `POST /agent-runs` and
+  `POST /sessions/{sessionId}/agent-runs` with a required `profileName`.
+- Agent profiles now own execution mode through `executionSettings`.
+- Omitted or explicit `regular` mode uses the built-in runner and
+  `executionSettings.defaultModel`.
+- `acp-stdio` mode stores process launch settings on the profile itself:
+  command, args, and optional `cwd`.
+- Public `/opencode-bindings`, `/opencode-bindings/{bindingName}`, and
+  `/opencode-launches` endpoints were removed.
 
-- `GET /opencode-bindings` - list saved OpenCode bindings.
-- `POST /opencode-bindings` - create a saved OpenCode binding.
-- `GET /opencode-bindings/{bindingName}` - fetch one binding.
-- `PUT /opencode-bindings/{bindingName}` - update mutable binding fields (`cwd`, `agentCommand`, `launchOptions`).
-- `DELETE /opencode-bindings/{bindingName}` - delete a binding.
-- `POST /opencode-launches` - launch an OpenCode coding run from saved selectors and a prompt.
+## OpenCode-Specific Scope That Remains
 
-## Persisted Boundary
-
-General agent profile data and OpenCode connection defaults are intentionally split:
-
-- General profile (`agent-profiles`): role, instructions, tool references, default model.
-- OpenCode binding (`opencode-bindings`): profile reference, command/args, working directory, transport defaults.
-
-This separation prevents OpenCode process details from leaking into the general profile schema, while still allowing deterministic launch composition.
-
-## Launch Contract
-
-`POST /opencode-launches` accepts:
-
-- `profileName` (required selector)
-- `bindingName` (optional selector; if omitted, launcher resolves by profile)
-- `prompt` (required user prompt)
-
-The launch handler:
-
-1. Requires authenticated runtime API context.
-2. Performs explicit selector and prompt validation.
-3. Delegates to the launcher service that resolves saved profile and binding configuration.
-4. Maps launcher error kinds to deterministic HTTP problem-details responses.
-
-## Validated ACP Subset
-
-The implementation uses only the validated OpenCode ACP subset documented in [opencode-acp-capability-map.md](./opencode-acp-capability-map.md):
-
-- `initialize`
-- `session/new`
-- `session/prompt`
-- `session/update` notifications consumed from the prompt stream
-
-## Deferred ACP Features
-
-The following ACP features remain deferred in this contract:
-
-- `session/cancel`
-- `session/close`
-- `session/list`
-- `session/load`
-- resumable/multi-step session control beyond the launch flow
-
-These deferred items are intentionally excluded from current runtime API behavior.
+OpenCode may still be used as the executable for an `acp-stdio` profile, and the
+validated ACP subset remains documented in
+[opencode-acp-capability-map.md](./opencode-acp-capability-map.md). Those notes
+describe executable behavior, not public runtime endpoints.

@@ -29,7 +29,7 @@ HTTP server and CLI entrypoint for Sonalmod under `apps/sonalmod`: a single **`s
 
 - **`main.go`** / **`cli.go`** — Cobra commands, process lifecycle, **`internal.Setup`** before subcommands run.
 - **`internal/wireup.go`** — loads config, registers DI (ident, shutdown hooks, **`NewRuntime`**, config providers, telemetry, app, infrastructure).
-- **`internal/runtime.go`** — constructs **`agent.Runner`** (LLM provider, **`workspacefs`** tools, filesystem storage under configurable data dir), exposes **`httpapi`** as **`HTTPHandler`**.
+- **`internal/runtime.go`** — constructs **`agent.Runner`** (LLM provider, **`workspacefs`** tools, filesystem storage under configurable data dir), builds **`agent.NewProfileRunDispatcher`** from the runner plus persisted agent profiles, and exposes **`httpapi`** as **`HTTPHandler`**.
 - **`internal/api/http/`** — HTTP composition: **`server/`** (router, HTTPServer, middleware chain), **`v1routes/`** (generated routes + handlers, e.g. health), **`v1controllers/`**, **`middleware/`**.
 - **`internal/config/`** — **`default.yaml`** plus per-env **`local.yaml`**, **`test.yaml`**, **`production.yaml`**; optional **`*-user.yaml`** overrides.
 - **`internal/telemetry/`** — slog, OTEL resource, HTTP middleware, pprof helper.
@@ -50,7 +50,7 @@ HTTP server and CLI entrypoint for Sonalmod under `apps/sonalmod`: a single **`s
 ## API integration
 
 - **Sonalmod-owned OpenAPI:** **`internal/api/http/v1routes.yaml`** — health, **`/api/v1/auth/*`** (login, refresh, me), and related schemas; **camelCase** in JSON per module conventions. Codegen updates **`internal/api/http/v1routes/`** via apigen (**`go generate`** on **`register.go`**).
-- **Runtime agent API:** authoritative OpenAPI for the agent HTTP surface lives under **`runtime/`** (e.g. **`runtime/internal/agentapi/openapi.yaml`**). This process **strips** the prefix and forwards **`/api/v1/runtime/*`** to the runtime **`httpapi`** handler (see **`internal/api/http/register.go`** **`SetupV1Routes`**). The **`apps/sonal-ui`** client generates TypeScript types from that runtime spec.
+- **Runtime agent API:** authoritative OpenAPI for the agent HTTP surface lives under **`runtime/`** (e.g. **`runtime/internal/agentapi/openapi.yaml`**). This process **strips** the prefix and forwards **`/api/v1/runtime/*`** to the runtime **`httpapi`** handler (see **`internal/api/http/register.go`** **`SetupV1Routes`**). Standard run endpoints are profile-based (`profileName`), agent profiles carry mode-specific `executionSettings` (`regular` by default or `acp-stdio` for ACP subprocess execution), and the public runtime surface no longer exposes `/opencode-*` endpoints. The **`apps/sonal-ui`** client generates TypeScript types from that runtime spec.
 
 ## Decisions (why not X)
 

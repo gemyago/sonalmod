@@ -1,8 +1,9 @@
-# Agent Profile Schema Boundary (Phase 2)
+# Agent Profile Schema Boundary
 
-This document defines the durable Phase 2 contract for persisted agent profiles.
-It records what is part of general `Agent` profile data now, and what remains
-deferred as backend-specific `Connection` data for later phases.
+This document defines the persisted agent profile contract after profile-based
+execution settings replaced the old OpenCode-specific public lane. It records
+what is part of general `Agent` profile data now, and what remains deferred as
+backend-specific `Connection` data.
 
 References:
 - `docs/domain-terminology.md` (`Agent` vs `Connection`)
@@ -11,14 +12,14 @@ References:
 
 ## General Profile Data
 
-Phase 2 persists only backend-agnostic profile data:
+Persisted general profile data includes:
 
 - `name` (immutable identifier, unique key)
 - `displayName` (mutable label)
 - `role` (mutable role/persona intent)
 - `instructions` (mutable instructions)
 - `toolRefs` (mutable list of selected tool identifiers)
-- `executionSettings` (mutable runtime-owned defaults, currently `defaultModel`)
+- `executionSettings` (mutable runtime-owned execution contract)
 - `createdAt`, `updatedAt` (system-managed timestamps)
 
 Identifier strategy:
@@ -38,12 +39,24 @@ Runtime CRUD endpoints:
 - `PATCH /api/v1/runtime/agent-profiles/{name}`
 - `DELETE /api/v1/runtime/agent-profiles/{name}`
 
+### Execution settings shapes
+
+`executionSettings` now owns both built-in and ACP stdio execution defaults:
+
+- `regular` mode (or omitted mode): requires `defaultModel`
+- `acp-stdio` mode: requires `agentCommand.command`, `agentCommand.args`, and
+  may include `cwd`
+
+This keeps standard run selection profile-centric: runtime run requests identify
+`profileName`, and the selected profile decides whether execution is built-in or
+ACP stdio.
+
 ## Deferred Connection Or Backend Data
 
-The following remain outside the Phase 2 general profile schema and belong to
-backend-specific binding/configuration work:
+The following remain outside the general profile schema and belong to
+backend-specific connection/configuration work:
 
-- OpenCode/ACP runtime launch data such as `cwd` and `mcpServers`
+- MCP server injection payloads not represented by `executionSettings`
 - ACP capability flags and negotiated protocol/runtime capabilities
 - Remote runtime session identifiers and resume/load handles
 - Slash-command inventories and backend-emitted command catalogs
@@ -56,19 +69,14 @@ This follows the glossary boundary:
 
 ## Boundary Table
 
-| Field / Concept | Phase 2 General Profile Data | Deferred Connection Or Backend Data |
+| Field / Concept | General Profile Data | Deferred Connection Or Backend Data |
 | --- | --- | --- |
 | Identifier | `name` | Remote runtime IDs |
 | Presentation | `displayName` | Backend-specific labels/aliases |
-| Behavior intent | `role`, `instructions` | ACP/OpenCode launch flags |
+| Behavior intent | `role`, `instructions` | Backend-specific launch flags |
 | Tool selection | `toolRefs` | Slash-command inventories |
-| Runtime defaults | `executionSettings.defaultModel` | Backend transport/options |
-| Working directory | No | `cwd` |
+| Runtime defaults | `executionSettings` | Backend transport/options outside the schema |
+| Working directory | `executionSettings.cwd` for `acp-stdio` | Other backend-local paths or handles |
 | MCP injection | No | `mcpServers` |
 | Capability semantics | No | ACP capability flags |
 | Session linkage | No | Remote session identifiers |
-
-## Phase 3 Integration Note
-
-Phase 3 can add OpenCode bindings by attaching `Connection`-side data to runs or
-runtime sessions while reusing this stable Phase 2 `Agent` profile schema.
