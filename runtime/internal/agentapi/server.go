@@ -46,10 +46,11 @@ var _ ServerInterface = (*AgentAPIServer)(nil)
 // successful parse, auth, and message mapping. Fields are only valid when
 // [AgentAPIServer.parseAgentRunRequest] returns ok true.
 type agentRunRequestInput struct {
-	Message     *rt.MessageContent
-	UserID      string
-	Model       string
-	ProfileName string
+	Message         *rt.MessageContent
+	UserID          string
+	Model           string
+	ProfileName     string
+	ProfileSelected bool
 }
 
 type profileRunDispatcher interface {
@@ -116,8 +117,7 @@ func (s *AgentAPIServer) StartAgentRun(w http.ResponseWriter, r *http.Request) {
 	sessionID := s.idGen.MustNewV7().String()
 	result, runErr := s.runAgentRequest(ctx, in, sessionID)
 	if runErr != nil {
-		s.logger.ErrorContext(ctx, "StartAgentRun: runner", "err", runErr)
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "agent run failed")
+		s.writeAgentRunError(ctx, w, "StartAgentRun", runErr)
 		return
 	}
 
@@ -177,8 +177,7 @@ func (s *AgentAPIServer) ContinueAgentRun(w http.ResponseWriter, r *http.Request
 
 	result, runErr := s.runAgentRequest(ctx, in, sid)
 	if runErr != nil {
-		s.logger.ErrorContext(ctx, "ContinueAgentRun: runner", "err", runErr)
-		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "agent run failed")
+		s.writeAgentRunError(ctx, w, "ContinueAgentRun", runErr)
 		return
 	}
 
@@ -225,15 +224,22 @@ func (s *AgentAPIServer) parseAgentRunRequest(
 	}
 
 	profileName := ""
+	profileSelected := false
 	if req.ProfileName != nil {
-		profileName = *req.ProfileName
+		profileSelected = true
+		profileName = strings.TrimSpace(*req.ProfileName)
+		if profileName == "" {
+			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "profileName is required")
+			return agentRunRequestInput{}, false
+		}
 	}
 
 	return agentRunRequestInput{
-		Message:     m,
-		UserID:      userID,
-		Model:       model,
-		ProfileName: profileName,
+		Message:         m,
+		UserID:          userID,
+		Model:           model,
+		ProfileName:     profileName,
+		ProfileSelected: profileSelected,
 	}, true
 }
 
@@ -242,7 +248,15 @@ func (s *AgentAPIServer) runAgentRequest(
 	in agentRunRequestInput,
 	sessionID string,
 ) (*rt.RunResult, error) {
-	if strings.TrimSpace(in.ProfileName) != "" && s.profileRuns != nil {
+	if in.ProfileSelected {
+		if s.profileRuns == nil {
+			return nil, &profileexec.Error{
+				Kind: profileexec.ErrorKindExecution,
+				Op:   "dispatch-profile",
+				Err:  errors.New("profile execution unavailable"),
+			}
+		}
+
 		return s.profileRuns.Run(ctx, profileexec.RunRequest{
 			ProfileName: in.ProfileName,
 			UserID:      in.UserID,
@@ -257,6 +271,36 @@ func (s *AgentAPIServer) runAgentRequest(
 		Message:   in.Message,
 		Model:     in.Model,
 	})
+}
+
+func (s *AgentAPIServer) writeAgentRunError(
+	ctx context.Context,
+	w http.ResponseWriter,
+	op string,
+	err error,
+) {
+	var dispatchErr *profileexec.Error
+	if errors.As(err, &dispatchErr) {
+		switch dispatchErr.Kind {
+		case profileexec.ErrorKindValidation, profileexec.ErrorKindUnsupported:
+			s.logger.DebugContext(ctx, op+": profile dispatch", "err", err)
+			detail := "invalid profileName"
+			if dispatchErr.Err != nil {
+				detail = dispatchErr.Err.Error()
+			}
+			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", detail)
+			return
+		case profileexec.ErrorKindNotFound:
+			s.logger.DebugContext(ctx, op+": profile dispatch", "err", err)
+			writeProblemDetails(w, http.StatusNotFound, "Not Found", "agent profile not found")
+			return
+		case profileexec.ErrorKindExecution:
+			break
+		}
+	}
+
+	s.logger.ErrorContext(ctx, op+": runner", "err", err)
+	writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "agent run failed")
 }
 
 func writeProblemDetails(w http.ResponseWriter, status int, title, detail string) {

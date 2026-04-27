@@ -371,6 +371,94 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, rec.Body.String(), "sessionBound")
 		})
 
+		t.Run("blank_profileName_returns_400", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":"   ","message":{"parts":[{"text":%q}]}}`, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, "profileName is required")
+		})
+
+		t.Run("unknown_profileName_returns_404", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			profileName := "profile-" + fake.Lorem().Word()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(nil, ap.ErrAgentProfileNotFound).Once()
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusNotFound, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, "agent profile not found")
+		})
+
+		t.Run("unsupported_profileName_returns_400", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			profileName := "profile-" + fake.Lorem().Word()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
+				Name: profileName,
+				ExecutionSettings: ap.ExecutionSettings{
+					Mode: ap.ExecutionModeACPStdio,
+				},
+			}, nil).Once()
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, string(ap.ExecutionModeACPStdio))
+		})
+
 		t.Run("integration_realAgentRunner", func(t *testing.T) {
 			t.Parallel()
 
@@ -847,6 +935,97 @@ func TestAgentAPIServer(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, rec.Code)
 			assert.Contains(t, rec.Body.String(), "sessionBound")
+		})
+
+		t.Run("blank_profileName_returns_400", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			sessPath := fake.UUID().V4()
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServer(t, m, NewMockIDGen())
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":"   ","message":{"parts":[{"text":%q}]}}`, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, "profileName is required")
+		})
+
+		t.Run("unknown_profileName_returns_404", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			sessPath := fake.UUID().V4()
+			profileName := "profile-" + fake.Lorem().Word()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(nil, ap.ErrAgentProfileNotFound).Once()
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusNotFound, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, "agent profile not found")
+		})
+
+		t.Run("unsupported_profileName_returns_400", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			sessPath := fake.UUID().V4()
+			profileName := "profile-" + fake.Lorem().Word()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
+				Name: profileName,
+				ExecutionSettings: ap.ExecutionSettings{
+					Mode: ap.ExecutionModeACPStdio,
+				},
+			}, nil).Once()
+
+			m := agent.NewMockAgentRunner(t)
+			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			var pd ProblemDetails
+			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
+			require.NotNil(t, pd.Detail)
+			assert.Contains(t, *pd.Detail, string(ap.ExecutionModeACPStdio))
 		})
 	})
 }
