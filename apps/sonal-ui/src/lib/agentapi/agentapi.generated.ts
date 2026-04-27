@@ -492,79 +492,6 @@ export interface components {
         AgentProfileListResponse: {
             profiles: components["schemas"]["AgentProfileResponse"][];
         };
-        /** @description OpenCode command defaults used to launch ACP. */
-        OpenCodeAgentCommand: {
-            /** @description Command executable to run OpenCode. */
-            command: string;
-            /** @description Command arguments passed as-is to the OpenCode executable. */
-            args: string[];
-        };
-        /** @description OpenCode launch defaults. */
-        OpenCodeLaunchOptions: {
-            /** @description ACP transport mode. Only `stdio` is supported. */
-            transport: string;
-        };
-        /** @description Request body for creating an OpenCode binding. */
-        CreateOpenCodeBindingRequest: {
-            /** @description Unique technical binding name (primary key). */
-            name: string;
-            /** @description Name of the saved general profile associated with this binding. */
-            profileName: string;
-            /** @description Optional working directory used for OpenCode launch. */
-            cwd?: string;
-            agentCommand: components["schemas"]["OpenCodeAgentCommand"];
-            launchOptions: components["schemas"]["OpenCodeLaunchOptions"];
-        };
-        /** @description Request body for updating mutable OpenCode binding fields. */
-        UpdateOpenCodeBindingRequest: {
-            /** @description Working directory used for OpenCode launch. */
-            cwd?: string;
-            agentCommand: components["schemas"]["OpenCodeAgentCommand"];
-            launchOptions: components["schemas"]["OpenCodeLaunchOptions"];
-        };
-        /** @description A saved OpenCode binding as returned by the API. */
-        OpenCodeBindingResponse: {
-            name: string;
-            profileName: string;
-            cwd: string;
-            agentCommand: components["schemas"]["OpenCodeAgentCommand"];
-            launchOptions: components["schemas"]["OpenCodeLaunchOptions"];
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        /** @description List of saved OpenCode bindings. */
-        OpenCodeBindingListResponse: {
-            bindings: components["schemas"]["OpenCodeBindingResponse"][];
-        };
-        /** @description Launch input selecting saved profile and optional binding. */
-        CreateOpenCodeLaunchRequest: {
-            /** @description Saved profile selector. */
-            profileName: string;
-            /** @description Optional saved binding selector. When omitted, the first binding for the profile is used. */
-            bindingName?: string;
-            /** @description User prompt forwarded to OpenCode launch flow. */
-            prompt: string;
-        };
-        /** @description Parsed ACP session/update notification from launch execution. */
-        OpenCodeLaunchUpdate: {
-            sessionId: string;
-            type: string;
-            payload: {
-                [key: string]: unknown;
-            };
-        };
-        /** @description Result of a launched OpenCode coding run. */
-        OpenCodeLaunchResponse: {
-            profileName: string;
-            bindingName: string;
-            sessionId: string;
-            promptResult: {
-                [key: string]: unknown;
-            };
-            updates: components["schemas"]["OpenCodeLaunchUpdate"][];
-        };
         /** @description RFC 9457 problem details (subset). */
         ProblemDetails: {
             /** Format: uri */
@@ -631,8 +558,6 @@ export interface components {
         ProviderName: string;
         /** @description Unique profile name (primary key, e.g. `coding-agent`). */
         ProfileName: string;
-        /** @description Unique OpenCode binding name (primary key, e.g. `opencode-main`). */
-        BindingName: string;
     };
     requestBodies: never;
     headers: never;
