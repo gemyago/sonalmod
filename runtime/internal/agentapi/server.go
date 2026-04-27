@@ -13,6 +13,7 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
+	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
 )
 
 var _ agent.AgentRunner = (*rt.BackgroundRunner)(nil)
@@ -27,6 +28,7 @@ type ModelsLister interface {
 //nolint:revive // name is fixed by API plan (agent-api-start-handler); stutter with package agentapi is intentional.
 type AgentAPIServer struct {
 	runner       agent.AgentRunner
+	profileRuns  profileRunDispatcher
 	logger       *slog.Logger
 	idGen        IDGen
 	reqMap       *AgentAPIRequestMapper
@@ -44,9 +46,20 @@ var _ ServerInterface = (*AgentAPIServer)(nil)
 // successful parse, auth, and message mapping. Fields are only valid when
 // [AgentAPIServer.parseAgentRunRequest] returns ok true.
 type agentRunRequestInput struct {
-	Message *rt.MessageContent
-	UserID  string
-	Model   string
+	Message     *rt.MessageContent
+	UserID      string
+	Model       string
+	ProfileName string
+}
+
+type profileRunDispatcher interface {
+	Run(ctx context.Context, request profileexec.RunRequest) (*rt.RunResult, error)
+}
+
+type agentRunRequestBody struct {
+	Message     UserMessageContent `json:"message"`
+	Model       *string            `json:"model,omitempty"`
+	ProfileName *string            `json:"profileName,omitempty"`
 }
 
 // ServerParams holds dependencies for [NewAgentAPIServer].
@@ -68,8 +81,17 @@ type ServerParams struct {
 
 // NewAgentAPIServer constructs an [AgentAPIServer] from p.
 func NewAgentAPIServer(p ServerParams) *AgentAPIServer {
+	var profileRuns profileRunDispatcher
+	if p.Runner != nil && p.AgentProfilesService != nil {
+		dispatcher, err := profileexec.NewDispatcher(p.AgentProfilesService, p.Runner)
+		if err == nil {
+			profileRuns = dispatcher
+		}
+	}
+
 	return &AgentAPIServer{
 		runner:       p.Runner,
+		profileRuns:  profileRuns,
 		logger:       p.Logger,
 		idGen:        p.IDGen,
 		reqMap:       p.RequestMapper,
@@ -92,12 +114,7 @@ func (s *AgentAPIServer) StartAgentRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionID := s.idGen.MustNewV7().String()
-	result, runErr := s.runner.Run(ctx, rt.RunParams{
-		UserID:    in.UserID,
-		SessionID: sessionID,
-		Message:   in.Message,
-		Model:     in.Model,
-	})
+	result, runErr := s.runAgentRequest(ctx, in, sessionID)
 	if runErr != nil {
 		s.logger.ErrorContext(ctx, "StartAgentRun: runner", "err", runErr)
 		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "agent run failed")
@@ -158,12 +175,7 @@ func (s *AgentAPIServer) ContinueAgentRun(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	result, runErr := s.runner.Run(ctx, rt.RunParams{
-		UserID:    in.UserID,
-		SessionID: sid,
-		Message:   in.Message,
-		Model:     in.Model,
-	})
+	result, runErr := s.runAgentRequest(ctx, in, sid)
 	if runErr != nil {
 		s.logger.ErrorContext(ctx, "ContinueAgentRun: runner", "err", runErr)
 		writeProblemDetails(w, http.StatusInternalServerError, "Internal Server Error", "agent run failed")
@@ -182,7 +194,7 @@ func (s *AgentAPIServer) parseAgentRunRequest(
 ) (agentRunRequestInput, bool) {
 	ctx := r.Context()
 
-	var req AgentRunRequest
+	var req agentRunRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.logger.DebugContext(ctx, op+": decode body", "err", err)
 		writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "malformed JSON request body")
@@ -212,11 +224,39 @@ func (s *AgentAPIServer) parseAgentRunRequest(
 		model = *req.Model
 	}
 
+	profileName := ""
+	if req.ProfileName != nil {
+		profileName = *req.ProfileName
+	}
+
 	return agentRunRequestInput{
-		Message: m,
-		UserID:  userID,
-		Model:   model,
+		Message:     m,
+		UserID:      userID,
+		Model:       model,
+		ProfileName: profileName,
 	}, true
+}
+
+func (s *AgentAPIServer) runAgentRequest(
+	ctx context.Context,
+	in agentRunRequestInput,
+	sessionID string,
+) (*rt.RunResult, error) {
+	if strings.TrimSpace(in.ProfileName) != "" && s.profileRuns != nil {
+		return s.profileRuns.Run(ctx, profileexec.RunRequest{
+			ProfileName: in.ProfileName,
+			UserID:      in.UserID,
+			SessionID:   sessionID,
+			Message:     in.Message,
+		})
+	}
+
+	return s.runner.Run(ctx, rt.RunParams{
+		UserID:    in.UserID,
+		SessionID: sessionID,
+		Message:   in.Message,
+		Model:     in.Model,
+	})
 }
 
 func writeProblemDetails(w http.ResponseWriter, status int, title, detail string) {

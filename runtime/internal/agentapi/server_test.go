@@ -17,6 +17,7 @@ import (
 
 	"github.com/gemyago/sonalmod/runtime/agent"
 	rt "github.com/gemyago/sonalmod/runtime/internal"
+	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	"github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
@@ -36,9 +37,17 @@ type fakeCallerIdentity struct{ userID string }
 func (f *fakeCallerIdentity) UserID() string { return f.userID }
 
 func TestAgentAPIServer(t *testing.T) {
-	newTestAgentAPIServer := func(t *testing.T, runner agent.AgentRunner, gen IDGen) *AgentAPIServer {
+	newTestAgentAPIServerWithProfiles := func(
+		t *testing.T,
+		runner agent.AgentRunner,
+		gen IDGen,
+		profilesSvc *mockAgentProfilesService,
+	) *AgentAPIServer {
 		t.Helper()
 		log := slog.New(slog.NewTextHandler(io.Discard, nil))
+		if profilesSvc == nil {
+			profilesSvc = &mockAgentProfilesService{}
+		}
 		return NewAgentAPIServer(ServerParams{
 			Runner:                 runner,
 			Logger:                 log,
@@ -46,8 +55,12 @@ func TestAgentAPIServer(t *testing.T) {
 			RequestMapper:          NewAgentAPIRequestMapper(),
 			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
-			AgentProfilesService:   &mockAgentProfilesService{},
+			AgentProfilesService:   profilesSvc,
 		})
+	}
+	newTestAgentAPIServer := func(t *testing.T, runner agent.AgentRunner, gen IDGen) *AgentAPIServer {
+		t.Helper()
+		return newTestAgentAPIServerWithProfiles(t, runner, gen, nil)
 	}
 
 	t.Run("StartAgentRun", func(t *testing.T) {
@@ -305,6 +318,51 @@ func TestAgentAPIServer(t *testing.T) {
 
 			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
 			body := fmt.Sprintf(`{"message":{"parts":[{"text":%q}]}}`, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), "sessionBound")
+		})
+
+		t.Run("profileName_dispatches_regular_profile_default_model", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			profileName := "profile-" + fake.Lorem().Word()
+			profileModel := "myprovider/" + fake.Lorem().Word()
+			requestModel := "otherprovider/" + fake.Lorem().Word()
+
+			gen := NewMockIDGen()
+			expSID := MockIDGenNextGenerated(gen).String()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
+				Name: profileName,
+				ExecutionSettings: ap.ExecutionSettings{
+					DefaultModel: profileModel,
+				},
+			}, nil)
+
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.UserID == userID && p.SessionID == expSID && p.Model == profileModel
+			})).Return(fakeRunResult(expSID, nil), nil)
+
+			srv := newTestAgentAPIServerWithProfiles(t, m, gen, profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(
+				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
+				profileName,
+				requestModel,
+				msg,
+			)
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
@@ -740,6 +798,49 @@ func TestAgentAPIServer(t *testing.T) {
 
 			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
 			body := fmt.Sprintf(`{"model":%q,"message":{"parts":[{"text":%q}]}}`, modelName, msg)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			assert.Contains(t, rec.Body.String(), "sessionBound")
+		})
+
+		t.Run("profileName_dispatches_regular_profile_default_model", func(t *testing.T) {
+			t.Parallel()
+
+			fake := faker.New()
+			userID := fake.Internet().User()
+			msg := fake.Lorem().Sentence(3)
+			sessPath := fake.UUID().V4()
+			profileName := "profile-" + fake.Lorem().Word()
+			profileModel := "myprovider/" + fake.Lorem().Word()
+			requestModel := "otherprovider/" + fake.Lorem().Word()
+
+			profilesSvc := &mockAgentProfilesService{}
+			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
+				Name: profileName,
+				ExecutionSettings: ap.ExecutionSettings{
+					DefaultModel: profileModel,
+				},
+			}, nil)
+
+			m := agent.NewMockAgentRunner(t)
+			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
+				return p.UserID == userID && p.SessionID == sessPath && p.Model == profileModel
+			})).Return(fakeRunResult(sessPath, nil), nil)
+
+			srv := newTestAgentAPIServerWithProfiles(t, m, NewMockIDGen(), profilesSvc)
+			mux := http.NewServeMux()
+			h := HandlerFromMux(srv, mux)
+
+			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
+			body := fmt.Sprintf(
+				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
+				profileName,
+				requestModel,
+				msg,
+			)
 			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
