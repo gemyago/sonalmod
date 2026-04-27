@@ -7,7 +7,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 ## 1. Profile Execution Settings Contract
 
 - [x] 1.1 Extend the runtime agent profile domain with `regular` and `acp-stdio` execution setting shapes, treating omitted mode as `regular`, and add unit tests for accepted and rejected settings.
-- [ ] 1.2 Update file-backed profile persistence to round-trip omitted regular mode, explicit regular mode, and ACP stdio settings without losing existing regular profiles.
+- [x] 1.2 Update file-backed profile persistence to round-trip omitted regular mode, explicit regular mode, and ACP stdio settings without losing existing regular profiles.
 - [ ] 1.3 Update database-backed profile persistence and migrations to store the new execution settings shape, with tests for existing regular records and ACP stdio records.
 - [ ] 1.4 Update profile API mapping and validation so profile CRUD accepts regular settings with `defaultModel`, accepts ACP stdio settings without `defaultModel`, and rejects unsupported modes or invalid command settings.
 

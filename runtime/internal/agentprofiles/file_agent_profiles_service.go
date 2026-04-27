@@ -218,12 +218,25 @@ func (s *FileAgentProfilesService) AutoMigrate() error {
 }
 
 type agentProfileFrontmatter struct {
-	Name        string   `yaml:"name"`
-	DisplayName string   `yaml:"displayName,omitempty"`
-	Role        string   `yaml:"role"`
-	Description string   `yaml:"description,omitempty"`
-	Model       string   `yaml:"model"`
-	Tools       []string `yaml:"tools"`
+	Name              string                            `yaml:"name"`
+	DisplayName       string                            `yaml:"displayName,omitempty"`
+	Role              string                            `yaml:"role"`
+	Description       string                            `yaml:"description,omitempty"`
+	Model             string                            `yaml:"model,omitempty"`
+	Tools             []string                          `yaml:"tools"`
+	ExecutionSettings *agentProfileExecutionFrontmatter `yaml:"executionSettings,omitempty"`
+}
+
+type agentProfileExecutionFrontmatter struct {
+	Mode         ExecutionMode                        `yaml:"mode,omitempty"`
+	DefaultModel string                               `yaml:"defaultModel,omitempty"`
+	AgentCommand *agentProfileAgentCommandFrontmatter `yaml:"agentCommand,omitempty"`
+	Cwd          string                               `yaml:"cwd,omitempty"`
+}
+
+type agentProfileAgentCommandFrontmatter struct {
+	Command string   `yaml:"command"`
+	Args    []string `yaml:"args,omitempty"`
 }
 
 func (s *FileAgentProfilesService) readProfileFile(path string) (AgentProfile, error) {
@@ -276,9 +289,9 @@ func parseProfileMarkdown(path string, data []byte) (AgentProfile, error) {
 			path,
 		)
 	}
-	if strings.TrimSpace(frontmatter.Model) == "" {
+	if strings.TrimSpace(frontmatter.Model) == "" && frontmatter.ExecutionSettings == nil {
 		return AgentProfile{}, fmt.Errorf(
-			"validate agent profile file %s: missing required frontmatter field `model`",
+			"validate agent profile file %s: missing required frontmatter field `model` or `executionSettings`",
 			path,
 		)
 	}
@@ -301,15 +314,28 @@ func parseProfileMarkdown(path string, data []byte) (AgentProfile, error) {
 		)
 	}
 
+	execSettings := ExecutionSettings{}
+	if frontmatter.ExecutionSettings == nil {
+		execSettings.DefaultModel = frontmatter.Model
+	} else {
+		execSettings.Mode = frontmatter.ExecutionSettings.Mode
+		execSettings.DefaultModel = frontmatter.ExecutionSettings.DefaultModel
+		execSettings.Cwd = frontmatter.ExecutionSettings.Cwd
+		if frontmatter.ExecutionSettings.AgentCommand != nil {
+			execSettings.AgentCommand = ACPStdioAgentCommand{
+				Command: frontmatter.ExecutionSettings.AgentCommand.Command,
+				Args:    append([]string(nil), frontmatter.ExecutionSettings.AgentCommand.Args...),
+			}
+		}
+	}
+
 	normalized, err := normalizeCreateParams(CreateAgentProfileParams{
-		Name:         frontmatter.Name,
-		DisplayName:  frontmatter.DisplayName,
-		Role:         frontmatter.Role,
-		Instructions: instructions,
-		ToolRefs:     frontmatter.Tools,
-		ExecutionSettings: ExecutionSettings{
-			DefaultModel: frontmatter.Model,
-		},
+		Name:              frontmatter.Name,
+		DisplayName:       frontmatter.DisplayName,
+		Role:              frontmatter.Role,
+		Instructions:      instructions,
+		ToolRefs:          frontmatter.Tools,
+		ExecutionSettings: execSettings,
 	})
 	if err != nil {
 		return AgentProfile{}, fmt.Errorf("validate agent profile file %s: %w", path, err)
@@ -330,8 +356,28 @@ func (s *FileAgentProfilesService) writeProfileFile(path string, profile AgentPr
 		Name:        profile.Name,
 		DisplayName: profile.DisplayName,
 		Role:        profile.Role,
-		Model:       profile.ExecutionSettings.DefaultModel,
 		Tools:       append([]string(nil), profile.ToolRefs...),
+	}
+
+	switch profile.ExecutionSettings.ModeOrDefault() {
+	case ExecutionModeRegular:
+		if profile.ExecutionSettings.Mode == "" {
+			frontmatter.Model = profile.ExecutionSettings.DefaultModel
+		} else {
+			frontmatter.ExecutionSettings = &agentProfileExecutionFrontmatter{
+				Mode:         profile.ExecutionSettings.Mode,
+				DefaultModel: profile.ExecutionSettings.DefaultModel,
+			}
+		}
+	case ExecutionModeACPStdio:
+		frontmatter.ExecutionSettings = &agentProfileExecutionFrontmatter{
+			Mode: profile.ExecutionSettings.Mode,
+			AgentCommand: &agentProfileAgentCommandFrontmatter{
+				Command: profile.ExecutionSettings.AgentCommand.Command,
+				Args:    append([]string(nil), profile.ExecutionSettings.AgentCommand.Args...),
+			},
+			Cwd: profile.ExecutionSettings.Cwd,
+		}
 	}
 
 	var frontmatterBuf bytes.Buffer

@@ -210,6 +210,104 @@ func TestFileAgentProfilesService(t *testing.T) {
 		assert.Equal(t, *created, *loaded)
 	})
 
+	t.Run("round-trips execution settings variants", func(t *testing.T) {
+		t.Run("omitted regular mode keeps legacy model frontmatter", func(t *testing.T) {
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+
+			created, err := svc.Create(t.Context(), makeCreateParams())
+			require.NoError(t, err)
+
+			content, err := os.ReadFile(filepath.Join(baseDir, "agents", created.Name+".md"))
+			require.NoError(t, err)
+			assert.Contains(t, string(content), "model: provider/model")
+			assert.NotContains(t, string(content), "executionSettings:")
+
+			reloaded, err := makeService(t, baseDir).Get(t.Context(), created.Name)
+			require.NoError(t, err)
+			assert.Equal(t, created.ExecutionSettings, reloaded.ExecutionSettings)
+		})
+
+		t.Run("explicit regular mode persists execution settings block", func(t *testing.T) {
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+
+			created, err := svc.Create(t.Context(), CreateAgentProfileParams{
+				Name:         fake.Lexify("profile-????????"),
+				DisplayName:  fake.Person().Name(),
+				Role:         "assistant",
+				Instructions: fake.Lorem().Sentence(8),
+				ToolRefs:     []string{"tool.read"},
+				ExecutionSettings: ExecutionSettings{
+					Mode:         ExecutionModeRegular,
+					DefaultModel: "provider/model",
+				},
+			})
+			require.NoError(t, err)
+
+			content, err := os.ReadFile(filepath.Join(baseDir, "agents", created.Name+".md"))
+			require.NoError(t, err)
+			assert.Contains(t, string(content), "executionSettings:")
+			assert.Contains(t, string(content), "mode: regular")
+			assert.Contains(t, string(content), "defaultModel: provider/model")
+			assert.NotContains(t, string(content), "\nmodel:")
+
+			reloaded, err := makeService(t, baseDir).Get(t.Context(), created.Name)
+			require.NoError(t, err)
+			assert.Equal(t, created.ExecutionSettings, reloaded.ExecutionSettings)
+		})
+
+		t.Run("acp-stdio mode persists execution settings block", func(t *testing.T) {
+			baseDir := t.TempDir()
+			svc := makeService(t, baseDir)
+
+			created, err := svc.Create(t.Context(), CreateAgentProfileParams{
+				Name:         fake.Lexify("profile-????????"),
+				DisplayName:  fake.Person().Name(),
+				Role:         "assistant",
+				Instructions: fake.Lorem().Sentence(8),
+				ToolRefs:     []string{"tool.read"},
+				ExecutionSettings: ExecutionSettings{
+					Mode: ExecutionModeACPStdio,
+					AgentCommand: ACPStdioAgentCommand{
+						Command: "opencode",
+						Args:    []string{"acp", "--safe"},
+					},
+					Cwd: "/workspace",
+				},
+			})
+			require.NoError(t, err)
+
+			content, err := os.ReadFile(filepath.Join(baseDir, "agents", created.Name+".md"))
+			require.NoError(t, err)
+			assert.Contains(t, string(content), "executionSettings:")
+			assert.Contains(t, string(content), "mode: acp-stdio")
+			assert.Contains(t, string(content), "agentCommand:")
+			assert.Contains(t, string(content), "command: opencode")
+			assert.Contains(t, string(content), "- acp")
+			assert.Contains(t, string(content), "cwd: /workspace")
+			assert.NotContains(t, string(content), "\nmodel:")
+
+			reloaded, err := makeService(t, baseDir).Get(t.Context(), created.Name)
+			require.NoError(t, err)
+			assert.Equal(t, created.ExecutionSettings, reloaded.ExecutionSettings)
+		})
+	})
+
+	t.Run("loads legacy regular profiles with model frontmatter", func(t *testing.T) {
+		baseDir := t.TempDir()
+		svc := makeService(t, baseDir)
+		path := filepath.Join(baseDir, "agents", "profile-legacy.md")
+		content := "---\nname: profile-legacy\nrole: assistant\nmodel: provider/model\ntools: []\n---\nlegacy instructions\n"
+		require.NoError(t, os.WriteFile(path, []byte(content), 0600))
+
+		profile, err := svc.Get(t.Context(), "profile-legacy")
+		require.NoError(t, err)
+		assert.Equal(t, ExecutionSettings{
+			DefaultModel: "provider/model",
+		}, profile.ExecutionSettings)
+	})
+
 	t.Run("error paths", func(t *testing.T) {
 		t.Run("NewFileAgentProfilesService rejects empty base dir", func(t *testing.T) {
 			_, err := NewFileAgentProfilesService("", testLogger(t))
@@ -270,7 +368,7 @@ func TestFileAgentProfilesService(t *testing.T) {
 
 			_, err := svc.Get(t.Context(), "bad")
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "missing required frontmatter field `model`")
+			assert.Contains(t, err.Error(), "missing required frontmatter field `model` or `executionSettings`")
 		})
 
 		t.Run("Get returns validation error when frontmatter name mismatches file", func(t *testing.T) {
@@ -405,6 +503,56 @@ func TestParseProfileMarkdownRoundTrip(t *testing.T) {
 	assert.Equal(t, "line one\nline two", parsed.Instructions)
 	assert.Equal(t, original.ToolRefs, parsed.ToolRefs)
 	assert.Equal(t, original.ExecutionSettings.DefaultModel, parsed.ExecutionSettings.DefaultModel)
+
+	t.Run("preserves explicit regular mode", func(t *testing.T) {
+		regularPath := filepath.Join(svc.baseDir, "agents", "profile-regular.md")
+		regularProfile := AgentProfile{
+			Name:         "profile-regular",
+			DisplayName:  "Regular Profile",
+			Role:         "assistant",
+			Instructions: "regular instructions",
+			ToolRefs:     []string{"tool.read"},
+			ExecutionSettings: ExecutionSettings{
+				Mode:         ExecutionModeRegular,
+				DefaultModel: "provider/model",
+			},
+		}
+
+		require.NoError(t, svc.writeProfileFile(regularPath, regularProfile))
+
+		regularData, readErr := os.ReadFile(regularPath)
+		require.NoError(t, readErr)
+		regularParsed, parseErr := parseProfileMarkdown(regularPath, regularData)
+		require.NoError(t, parseErr)
+		assert.Equal(t, regularProfile.ExecutionSettings, regularParsed.ExecutionSettings)
+	})
+
+	t.Run("preserves acp-stdio settings", func(t *testing.T) {
+		acpPath := filepath.Join(svc.baseDir, "agents", "profile-acp.md")
+		acpProfile := AgentProfile{
+			Name:         "profile-acp",
+			DisplayName:  "ACP Profile",
+			Role:         "assistant",
+			Instructions: "acp instructions",
+			ToolRefs:     []string{"tool.read"},
+			ExecutionSettings: ExecutionSettings{
+				Mode: ExecutionModeACPStdio,
+				AgentCommand: ACPStdioAgentCommand{
+					Command: "opencode",
+					Args:    []string{"acp", "--safe"},
+				},
+				Cwd: "/workspace",
+			},
+		}
+
+		require.NoError(t, svc.writeProfileFile(acpPath, acpProfile))
+
+		acpData, readErr := os.ReadFile(acpPath)
+		require.NoError(t, readErr)
+		acpParsed, parseErr := parseProfileMarkdown(acpPath, acpData)
+		require.NoError(t, parseErr)
+		assert.Equal(t, acpProfile.ExecutionSettings, acpParsed.ExecutionSettings)
+	})
 }
 
 func TestParseProfileMarkdownValidation(t *testing.T) {
