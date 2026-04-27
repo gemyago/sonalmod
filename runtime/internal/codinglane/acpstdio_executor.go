@@ -7,21 +7,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 )
 
-// ACPStdioErrorKind classifies ACP stdio execution failure categories.
-type ACPStdioErrorKind = OpenCodeACPErrorKind
-
-const (
-	// ACPStdioErrorKindValidation indicates invalid launch input.
-	ACPStdioErrorKindValidation = OpenCodeACPErrorKindValidation
-	// ACPStdioErrorKindSubprocess indicates subprocess startup or I/O failures.
-	ACPStdioErrorKindSubprocess = OpenCodeACPErrorKindSubprocess
-	// ACPStdioErrorKindProtocol indicates malformed/invalid ACP protocol responses.
-	ACPStdioErrorKindProtocol = OpenCodeACPErrorKindProtocol
-)
-
-// ACPStdioError wraps ACP stdio execution failures with a stable kind.
-type ACPStdioError = OpenCodeACPError
-
 // ACPStdioExecutorRequest defines profile-owned ACP stdio launch input.
 type ACPStdioExecutorRequest struct {
 	ExecutionSettings agentprofiles.ExecutionSettings
@@ -29,14 +14,11 @@ type ACPStdioExecutorRequest struct {
 	MCPServers        []any
 }
 
-// ACPStdioUpdate contains a parsed session/update notification.
-type ACPStdioUpdate = OpenCodeACPUpdate
-
 // ACPStdioExecutorResult contains session metadata and prompt result.
-type ACPStdioExecutorResult = OpenCodeACPLaunchResult
+type ACPStdioExecutorResult = ACPStdioLaunchResult
 
 type acpStdioLaunchClient interface {
-	Launch(ctx context.Context, request OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error)
+	Launch(ctx context.Context, request ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error)
 }
 
 // ACPStdioExecutor executes ACP stdio runs from profile execution settings.
@@ -66,13 +48,10 @@ func (e *ACPStdioExecutor) Execute(
 		}
 	}
 
-	return e.client.Launch(ctx, OpenCodeACPLaunchRequest{
-		AgentCommand: OpenCodeAgentCommand{
-			Command: request.ExecutionSettings.AgentCommand.Command,
-			Args:    append([]string(nil), request.ExecutionSettings.AgentCommand.Args...),
-		},
-		CWD:        request.ExecutionSettings.Cwd,
-		Prompt:     request.Prompt,
-		MCPServers: request.MCPServers,
+	return e.client.Launch(ctx, ACPStdioLaunchRequest{
+		AgentCommand: request.ExecutionSettings.AgentCommand,
+		CWD:          request.ExecutionSettings.Cwd,
+		Prompt:       request.Prompt,
+		MCPServers:   request.MCPServers,
 	})
 }

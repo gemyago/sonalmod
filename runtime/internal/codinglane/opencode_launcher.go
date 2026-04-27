@@ -43,7 +43,7 @@ type OpenCodeLaunchResult struct {
 	BindingName  string
 	SessionID    string
 	PromptResult json.RawMessage
-	Updates      []OpenCodeACPUpdate
+	Updates      []ACPStdioUpdate
 }
 
 type acpStdioExecutor interface {

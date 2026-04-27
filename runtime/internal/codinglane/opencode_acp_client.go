@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 )
 
 const (
@@ -23,53 +25,53 @@ const (
 	openCodeACPScannerMaxSize   = 4 * 1024 * 1024
 )
 
-// OpenCodeACPErrorKind classifies ACP launch failure categories.
-type OpenCodeACPErrorKind string
+// ACPStdioErrorKind classifies ACP stdio launch failure categories.
+type ACPStdioErrorKind string
 
 const (
-	// OpenCodeACPErrorKindValidation indicates invalid launch input.
-	OpenCodeACPErrorKindValidation OpenCodeACPErrorKind = "validation"
-	// OpenCodeACPErrorKindSubprocess indicates subprocess startup or I/O failures.
-	OpenCodeACPErrorKindSubprocess OpenCodeACPErrorKind = "subprocess"
-	// OpenCodeACPErrorKindProtocol indicates malformed/invalid ACP protocol responses.
-	OpenCodeACPErrorKindProtocol OpenCodeACPErrorKind = "protocol"
+	// ACPStdioErrorKindValidation indicates invalid launch input.
+	ACPStdioErrorKindValidation ACPStdioErrorKind = "validation"
+	// ACPStdioErrorKindSubprocess indicates subprocess startup or I/O failures.
+	ACPStdioErrorKindSubprocess ACPStdioErrorKind = "subprocess"
+	// ACPStdioErrorKindProtocol indicates malformed/invalid ACP protocol responses.
+	ACPStdioErrorKindProtocol ACPStdioErrorKind = "protocol"
 )
 
-// OpenCodeACPError wraps launch failures with a stable kind.
-type OpenCodeACPError struct {
-	Kind OpenCodeACPErrorKind
+// ACPStdioError wraps launch failures with a stable kind.
+type ACPStdioError struct {
+	Kind ACPStdioErrorKind
 	Op   string
 	Err  error
 }
 
-func (e *OpenCodeACPError) Error() string {
-	return fmt.Sprintf("opencode acp %s (%s): %v", e.Op, e.Kind, e.Err)
+func (e *ACPStdioError) Error() string {
+	return fmt.Sprintf("acp stdio %s (%s): %v", e.Op, e.Kind, e.Err)
 }
 
-func (e *OpenCodeACPError) Unwrap() error {
+func (e *ACPStdioError) Unwrap() error {
 	return e.Err
 }
 
-// OpenCodeACPLaunchRequest defines data required to launch an ACP coding run.
-type OpenCodeACPLaunchRequest struct {
-	AgentCommand OpenCodeAgentCommand
+// ACPStdioLaunchRequest defines data required to launch an ACP stdio run.
+type ACPStdioLaunchRequest struct {
+	AgentCommand agentprofiles.ACPStdioAgentCommand
 	CWD          string
 	Prompt       string
 	MCPServers   []any
 }
 
-// OpenCodeACPUpdate contains a parsed session/update notification.
-type OpenCodeACPUpdate struct {
+// ACPStdioUpdate contains a parsed session/update notification.
+type ACPStdioUpdate struct {
 	SessionID string
 	Type      string
 	Payload   json.RawMessage
 }
 
-// OpenCodeACPLaunchResult contains session metadata and prompt result.
-type OpenCodeACPLaunchResult struct {
+// ACPStdioLaunchResult contains session metadata and prompt result.
+type ACPStdioLaunchResult struct {
 	SessionID    string
 	PromptResult json.RawMessage
-	Updates      []OpenCodeACPUpdate
+	Updates      []ACPStdioUpdate
 }
 
 // OpenCodeACPClient executes the validated OpenCode ACP launch subset over stdio.
@@ -80,27 +82,27 @@ func NewOpenCodeACPClient() *OpenCodeACPClient {
 	return &OpenCodeACPClient{}
 }
 
-func wrapOpenCodeACPError(kind OpenCodeACPErrorKind, op string, err error) error {
+func wrapACPStdioError(kind ACPStdioErrorKind, op string, err error) error {
 	if err == nil {
 		return nil
 	}
-	return &OpenCodeACPError{Kind: kind, Op: op, Err: err}
+	return &ACPStdioError{Kind: kind, Op: op, Err: err}
 }
 
-type openCodeACPResolvedLaunchRequest struct {
-	Command    OpenCodeAgentCommand
+type acpStdioResolvedLaunchRequest struct {
+	Command    agentprofiles.ACPStdioAgentCommand
 	CWD        string
 	Prompt     string
 	MCPServers []any
 }
 
-type openCodeACPSubprocess struct {
+type acpStdioSubprocess struct {
 	stdin io.WriteCloser
 	cmd   *exec.Cmd
 	out   io.Reader
 }
 
-func (p *openCodeACPSubprocess) close() {
+func (p *acpStdioSubprocess) close() {
 	_ = p.stdin.Close()
 	waitDone := make(chan error, 1)
 	go func() {
@@ -116,29 +118,29 @@ func (p *openCodeACPSubprocess) close() {
 
 func (c *OpenCodeACPClient) Launch(
 	ctx context.Context,
-	request OpenCodeACPLaunchRequest,
-) (*OpenCodeACPLaunchResult, error) {
-	resolved, err := resolveOpenCodeACPLaunchRequest(request)
+	request ACPStdioLaunchRequest,
+) (*ACPStdioLaunchResult, error) {
+	resolved, err := resolveACPStdioLaunchRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	process, err := startOpenCodeACPSubprocess(ctx, resolved)
+	process, err := startACPStdioSubprocess(ctx, resolved)
 	if err != nil {
 		return nil, err
 	}
 	defer process.close()
 
-	return executeOpenCodeACPProtocol(ctx, process, resolved)
+	return executeACPStdioProtocol(ctx, process, resolved)
 }
 
-func resolveOpenCodeACPLaunchRequest(
-	request OpenCodeACPLaunchRequest,
-) (openCodeACPResolvedLaunchRequest, error) {
-	command, err := normalizeAgentCommand(request.AgentCommand)
+func resolveACPStdioLaunchRequest(
+	request ACPStdioLaunchRequest,
+) (acpStdioResolvedLaunchRequest, error) {
+	command, err := normalizeACPStdioAgentCommand(request.AgentCommand)
 	if err != nil {
-		return openCodeACPResolvedLaunchRequest{}, wrapOpenCodeACPError(
-			OpenCodeACPErrorKindValidation,
+		return acpStdioResolvedLaunchRequest{}, wrapACPStdioError(
+			ACPStdioErrorKindValidation,
 			"validate-agent-command",
 			err,
 		)
@@ -146,8 +148,8 @@ func resolveOpenCodeACPLaunchRequest(
 
 	prompt := strings.TrimSpace(request.Prompt)
 	if prompt == "" {
-		return openCodeACPResolvedLaunchRequest{}, wrapOpenCodeACPError(
-			OpenCodeACPErrorKindValidation,
+		return acpStdioResolvedLaunchRequest{}, wrapACPStdioError(
+			ACPStdioErrorKindValidation,
 			"validate-prompt",
 			errors.New("prompt is required"),
 		)
@@ -157,8 +159,8 @@ func resolveOpenCodeACPLaunchRequest(
 	if cwd == "" {
 		cwd, err = os.Getwd()
 		if err != nil {
-			return openCodeACPResolvedLaunchRequest{}, wrapOpenCodeACPError(
-				OpenCodeACPErrorKindSubprocess,
+			return acpStdioResolvedLaunchRequest{}, wrapACPStdioError(
+				ACPStdioErrorKindSubprocess,
 				"resolve-working-directory",
 				fmt.Errorf("determine working directory: %w", err),
 			)
@@ -170,7 +172,7 @@ func resolveOpenCodeACPLaunchRequest(
 		mcpServers = []any{}
 	}
 
-	return openCodeACPResolvedLaunchRequest{
+	return acpStdioResolvedLaunchRequest{
 		Command:    command,
 		CWD:        cwd,
 		Prompt:     prompt,
@@ -178,10 +180,10 @@ func resolveOpenCodeACPLaunchRequest(
 	}, nil
 }
 
-func startOpenCodeACPSubprocess(
+func startACPStdioSubprocess(
 	ctx context.Context,
-	request openCodeACPResolvedLaunchRequest,
-) (*openCodeACPSubprocess, error) {
+	request acpStdioResolvedLaunchRequest,
+) (*acpStdioSubprocess, error) {
 	// #nosec G204 -- command/args are validated persisted defaults from trusted runtime config.
 	cmd := exec.CommandContext(ctx, request.Command.Command, request.Command.Args...)
 	cmd.Dir = request.CWD
@@ -189,8 +191,8 @@ func startOpenCodeACPSubprocess(
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, wrapOpenCodeACPError(
-			OpenCodeACPErrorKindSubprocess,
+		return nil, wrapACPStdioError(
+			ACPStdioErrorKindSubprocess,
 			"open-stdin",
 			fmt.Errorf("open ACP stdin: %w", err),
 		)
@@ -198,95 +200,95 @@ func startOpenCodeACPSubprocess(
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, wrapOpenCodeACPError(
-			OpenCodeACPErrorKindSubprocess,
+		return nil, wrapACPStdioError(
+			ACPStdioErrorKindSubprocess,
 			"open-stdout",
 			fmt.Errorf("open ACP stdout: %w", err),
 		)
 	}
 
 	if err = cmd.Start(); err != nil {
-		return nil, wrapOpenCodeACPError(
-			OpenCodeACPErrorKindSubprocess,
+		return nil, wrapACPStdioError(
+			ACPStdioErrorKindSubprocess,
 			"start-subprocess",
 			fmt.Errorf("start ACP subprocess: %w", err),
 		)
 	}
 
-	return &openCodeACPSubprocess{stdin: stdin, out: stdout, cmd: cmd}, nil
+	return &acpStdioSubprocess{stdin: stdin, out: stdout, cmd: cmd}, nil
 }
 
-func executeOpenCodeACPProtocol(
+func executeACPStdioProtocol(
 	ctx context.Context,
-	process *openCodeACPSubprocess,
-	request openCodeACPResolvedLaunchRequest,
-) (*OpenCodeACPLaunchResult, error) {
+	process *acpStdioSubprocess,
+	request acpStdioResolvedLaunchRequest,
+) (*ACPStdioLaunchResult, error) {
 	client := newOpenCodeACPWireClient(process.out, process.stdin)
 
-	if err := initializeOpenCodeACP(ctx, client); err != nil {
+	if err := initializeACPStdio(ctx, client); err != nil {
 		return nil, err
 	}
 
-	sessionID, err := createOpenCodeSession(ctx, client, request)
+	sessionID, err := createACPStdioSession(ctx, client, request)
 	if err != nil {
 		return nil, err
 	}
 
-	promptResult, updates, err := promptOpenCodeSession(ctx, client, sessionID, request.Prompt)
+	promptResult, updates, err := promptACPStdioSession(ctx, client, sessionID, request.Prompt)
 	if err != nil {
 		return nil, err
 	}
 
-	return &OpenCodeACPLaunchResult{
+	return &ACPStdioLaunchResult{
 		SessionID:    sessionID,
 		PromptResult: promptResult,
 		Updates:      updates,
 	}, nil
 }
 
-func initializeOpenCodeACP(ctx context.Context, client *openCodeACPWireClient) error {
+func initializeACPStdio(ctx context.Context, client *openCodeACPWireClient) error {
 	initializeResp, err := client.call(ctx, "initialize", map[string]any{
 		"protocolVersion": openCodeACPProtocolVersion,
 	}, nil)
 	if err != nil {
-		return wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", err)
+		return wrapACPStdioError(ACPStdioErrorKindProtocol, "initialize", err)
 	}
 
 	if _, err = jsonRawObject(initializeResp.Result, "initialize result"); err != nil {
-		return wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "initialize", err)
+		return wrapACPStdioError(ACPStdioErrorKindProtocol, "initialize", err)
 	}
 
 	return nil
 }
 
-func createOpenCodeSession(
+func createACPStdioSession(
 	ctx context.Context,
 	client *openCodeACPWireClient,
-	request openCodeACPResolvedLaunchRequest,
+	request acpStdioResolvedLaunchRequest,
 ) (string, error) {
 	newSessionResp, err := client.call(ctx, "session/new", map[string]any{
 		"cwd":        request.CWD,
 		"mcpServers": request.MCPServers,
 	}, nil)
 	if err != nil {
-		return "", wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/new", err)
+		return "", wrapACPStdioError(ACPStdioErrorKindProtocol, "session/new", err)
 	}
 
 	sessionID, err := extractOpenCodeSessionID(newSessionResp.Result)
 	if err != nil {
-		return "", wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/new", err)
+		return "", wrapACPStdioError(ACPStdioErrorKindProtocol, "session/new", err)
 	}
 
 	return sessionID, nil
 }
 
-func promptOpenCodeSession(
+func promptACPStdioSession(
 	ctx context.Context,
 	client *openCodeACPWireClient,
 	sessionID string,
 	prompt string,
-) (json.RawMessage, []OpenCodeACPUpdate, error) {
-	updates := make([]OpenCodeACPUpdate, 0, openCodeACPUpdateBufferSize)
+) (json.RawMessage, []ACPStdioUpdate, error) {
+	updates := make([]ACPStdioUpdate, 0, openCodeACPUpdateBufferSize)
 	promptResp, err := client.call(ctx, "session/prompt", map[string]any{
 		"sessionId": sessionID,
 		"prompt": []map[string]string{{
@@ -298,7 +300,7 @@ func promptOpenCodeSession(
 			return nil
 		}
 
-		update, parseErr := parseOpenCodeSessionUpdate(env.Params)
+		update, parseErr := parseACPStdioSessionUpdate(env.Params)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -306,7 +308,7 @@ func promptOpenCodeSession(
 		return nil
 	})
 	if err != nil {
-		return nil, nil, wrapOpenCodeACPError(OpenCodeACPErrorKindProtocol, "session/prompt", err)
+		return nil, nil, wrapACPStdioError(ACPStdioErrorKindProtocol, "session/prompt", err)
 	}
 
 	return promptResp.Result, updates, nil
@@ -476,42 +478,78 @@ func extractOpenCodeSessionID(result json.RawMessage) (string, error) {
 	return sessionID, nil
 }
 
-func parseOpenCodeSessionUpdate(params json.RawMessage) (OpenCodeACPUpdate, error) {
+func parseACPStdioSessionUpdate(params json.RawMessage) (ACPStdioUpdate, error) {
 	paramsObj, err := jsonRawObject(params, "session/update params")
 	if err != nil {
-		return OpenCodeACPUpdate{}, err
+		return ACPStdioUpdate{}, err
 	}
 
 	sessionID, _ := paramsObj["sessionId"].(string)
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return OpenCodeACPUpdate{}, errors.New("session/update params missing sessionId")
+		return ACPStdioUpdate{}, errors.New("session/update params missing sessionId")
 	}
 
 	updateValue, ok := paramsObj["update"]
 	if !ok {
-		return OpenCodeACPUpdate{}, errors.New("session/update params missing update")
+		return ACPStdioUpdate{}, errors.New("session/update params missing update")
 	}
 	updateRaw, err := json.Marshal(updateValue)
 	if err != nil {
-		return OpenCodeACPUpdate{}, fmt.Errorf("marshal session/update payload: %w", err)
+		return ACPStdioUpdate{}, fmt.Errorf("marshal session/update payload: %w", err)
 	}
 	updateObj, err := jsonRawObject(updateRaw, "session/update payload")
 	if err != nil {
-		return OpenCodeACPUpdate{}, err
+		return ACPStdioUpdate{}, err
 	}
 
 	updateType, _ := updateObj["type"].(string)
 	updateType = strings.TrimSpace(updateType)
 	if updateType == "" {
-		return OpenCodeACPUpdate{}, errors.New("session/update payload missing type")
+		return ACPStdioUpdate{}, errors.New("session/update payload missing type")
 	}
 
-	return OpenCodeACPUpdate{
+	return ACPStdioUpdate{
 		SessionID: sessionID,
 		Type:      updateType,
 		Payload:   updateRaw,
 	}, nil
+}
+
+func normalizeACPStdioAgentCommand(
+	command agentprofiles.ACPStdioAgentCommand,
+) (agentprofiles.ACPStdioAgentCommand, error) {
+	command.Command = strings.TrimSpace(command.Command)
+	if command.Command == "" {
+		return agentprofiles.ACPStdioAgentCommand{}, errors.New("agent_command.command is required")
+	}
+	if strings.ContainsAny(command.Command, "\n\r\t") {
+		return agentprofiles.ACPStdioAgentCommand{}, errors.New(
+			"agent_command.command contains control characters",
+		)
+	}
+
+	if command.Args == nil {
+		command.Args = []string{}
+	}
+	for idx := range command.Args {
+		command.Args[idx] = strings.TrimSpace(command.Args[idx])
+		if command.Args[idx] == "" {
+			return agentprofiles.ACPStdioAgentCommand{}, errors.New(
+				"agent_command.args must not contain empty values",
+			)
+		}
+		if strings.ContainsAny(command.Args[idx], "\n\r\t") {
+			return agentprofiles.ACPStdioAgentCommand{}, errors.New(
+				"agent_command.args contain control characters",
+			)
+		}
+	}
+	if hasDuplicates(command.Args) {
+		return agentprofiles.ACPStdioAgentCommand{}, errors.New("agent_command.args must be unique")
+	}
+
+	return command, nil
 }
 
 func jsonRawObject(raw json.RawMessage, description string) (map[string]any, error) {

@@ -44,12 +44,12 @@ func TestACPStdioExecutor(t *testing.T) {
 		}
 
 		type capturedRequest struct {
-			value OpenCodeACPLaunchRequest
+			value ACPStdioLaunchRequest
 		}
 		captured := &capturedRequest{}
 
 		executor := newACPStdioExecutorWithClient(&fakeACPLaunchClient{
-			launch: func(_ context.Context, req OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error) {
+			launch: func(_ context.Context, req ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error) {
 				captured.value = req
 				return expectedResult, nil
 			},
@@ -69,7 +69,7 @@ func TestACPStdioExecutor(t *testing.T) {
 		t.Parallel()
 
 		executor := newACPStdioExecutorWithClient(&fakeACPLaunchClient{
-			launch: func(context.Context, OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error) {
+			launch: func(context.Context, ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error) {
 				t.Fatal("unexpected launch call")
 				return nil, errors.New("unexpected launch call")
 			},
@@ -93,14 +93,14 @@ func TestACPStdioExecutor(t *testing.T) {
 		t.Parallel()
 
 		request := makeRequest()
-		expectedErr := &OpenCodeACPError{
-			Kind: OpenCodeACPErrorKindProtocol,
+		expectedErr := &ACPStdioError{
+			Kind: ACPStdioErrorKindProtocol,
 			Op:   "session/prompt",
 			Err:  errors.New("protocol failed"),
 		}
 
 		executor := newACPStdioExecutorWithClient(&fakeACPLaunchClient{
-			launch: func(context.Context, OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error) {
+			launch: func(context.Context, ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error) {
 				return nil, expectedErr
 			},
 		})
@@ -112,12 +112,12 @@ func TestACPStdioExecutor(t *testing.T) {
 }
 
 type fakeACPLaunchClient struct {
-	launch func(context.Context, OpenCodeACPLaunchRequest) (*OpenCodeACPLaunchResult, error)
+	launch func(context.Context, ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error)
 }
 
 func (f *fakeACPLaunchClient) Launch(
 	ctx context.Context,
-	request OpenCodeACPLaunchRequest,
-) (*OpenCodeACPLaunchResult, error) {
+	request ACPStdioLaunchRequest,
+) (*ACPStdioLaunchResult, error) {
 	return f.launch(ctx, request)
 }
