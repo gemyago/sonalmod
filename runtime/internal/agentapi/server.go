@@ -28,7 +28,7 @@ type ModelsLister interface {
 //nolint:revive // name is fixed by API plan (agent-api-start-handler); stutter with package agentapi is intentional.
 type AgentAPIServer struct {
 	runner       agent.AgentRunner
-	profileRuns  profileRunDispatcher
+	profileRuns  agent.ProfileRunDispatcher
 	logger       *slog.Logger
 	idGen        IDGen
 	reqMap       *AgentAPIRequestMapper
@@ -53,10 +53,6 @@ type agentRunRequestInput struct {
 	ProfileSelected bool
 }
 
-type profileRunDispatcher interface {
-	Run(ctx context.Context, request profileexec.RunRequest) (*rt.RunResult, error)
-}
-
 type agentRunRequestBody struct {
 	Message     UserMessageContent `json:"message"`
 	Model       *string            `json:"model,omitempty"`
@@ -73,6 +69,7 @@ type ServerParams struct {
 	RequestMapper          *AgentAPIRequestMapper
 	SSEWriter              *AgentAPISSEWriter
 	ProvidersConfigService lp.ProvidersConfigService
+	ProfileRunDispatcher   agent.ProfileRunDispatcher
 	AgentProfilesService   ap.AgentProfilesService
 	OpenCodeBindingService agent.OpenCodeBindingService
 	OpenCodeLauncher       agent.OpenCodeLauncher
@@ -82,17 +79,9 @@ type ServerParams struct {
 
 // NewAgentAPIServer constructs an [AgentAPIServer] from p.
 func NewAgentAPIServer(p ServerParams) *AgentAPIServer {
-	var profileRuns profileRunDispatcher
-	if p.Runner != nil && p.AgentProfilesService != nil {
-		dispatcher, err := profileexec.NewDispatcher(p.AgentProfilesService, p.Runner)
-		if err == nil {
-			profileRuns = dispatcher
-		}
-	}
-
 	return &AgentAPIServer{
 		runner:       p.Runner,
-		profileRuns:  profileRuns,
+		profileRuns:  p.ProfileRunDispatcher,
 		logger:       p.Logger,
 		idGen:        p.IDGen,
 		reqMap:       p.RequestMapper,
@@ -257,7 +246,7 @@ func (s *AgentAPIServer) runAgentRequest(
 			}
 		}
 
-		return s.profileRuns.Run(ctx, profileexec.RunRequest{
+		return s.profileRuns.Run(ctx, agent.ProfileRunRequest{
 			ProfileName: in.ProfileName,
 			UserID:      in.UserID,
 			SessionID:   sessionID,

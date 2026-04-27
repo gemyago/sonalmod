@@ -53,6 +53,13 @@ type Runtime struct {
 	ToolsRegistry *agent.ToolsRegistry
 }
 
+type runtimeServices struct {
+	providersConfigSvc agent.ProvidersConfigService
+	agentProfilesSvc   agent.AgentProfilesService
+	openCodeBindingSvc agent.OpenCodeBindingService
+	openCodeLauncher   agent.OpenCodeLauncher
+}
+
 func newProvidersConfigService(deps RuntimeDeps) (agent.ProvidersConfigService, error) { //nolint:ireturn
 	if deps.AgentRuntimeStorageType == storageTypeDatabase {
 		svc, err := agent.NewDatabaseProvidersConfigService(
@@ -129,6 +136,35 @@ func autoMigrateRuntimeServices(
 	return nil
 }
 
+func newRuntimeServices(deps RuntimeDeps) (*runtimeServices, error) {
+	providersSvc, err := newProvidersConfigService(deps)
+	if err != nil {
+		return nil, err
+	}
+
+	agentProfilesSvc, err := newAgentProfilesService(deps)
+	if err != nil {
+		return nil, err
+	}
+
+	openCodeBindingSvc, err := newOpenCodeBindingService(deps)
+	if err != nil {
+		return nil, err
+	}
+
+	openCodeLauncher, err := agent.NewOpenCodeLauncher(agentProfilesSvc, openCodeBindingSvc)
+	if err != nil {
+		return nil, fmt.Errorf("create opencode launcher: %w", err)
+	}
+
+	return &runtimeServices{
+		providersConfigSvc: providersSvc,
+		agentProfilesSvc:   agentProfilesSvc,
+		openCodeBindingSvc: openCodeBindingSvc,
+		openCodeLauncher:   openCodeLauncher,
+	}, nil
+}
+
 func registerRuntime(container *dig.Container) error {
 	return di.ProvideAll(
 		container,
@@ -162,21 +198,9 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 		return nil, fmt.Errorf("register workspacefs tools: %w", err)
 	}
 
-	providersSvc, err := newProvidersConfigService(deps)
+	services, err := newRuntimeServices(deps)
 	if err != nil {
 		return nil, err
-	}
-	agentProfilesSvc, err := newAgentProfilesService(deps)
-	if err != nil {
-		return nil, err
-	}
-	openCodeBindingSvc, err := newOpenCodeBindingService(deps)
-	if err != nil {
-		return nil, err
-	}
-	openCodeLauncher, err := agent.NewOpenCodeLauncher(agentProfilesSvc, openCodeBindingSvc)
-	if err != nil {
-		return nil, fmt.Errorf("create opencode launcher: %w", err)
 	}
 
 	storageOpt := agent.WithFileSystemStorage(deps.DataDir)
@@ -206,7 +230,7 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 
 	runner, err := agent.NewRunner(
 		agent.RunnerArgs{
-			ProvidersConfigService: providersSvc,
+			ProvidersConfigService: services.providersConfigSvc,
 		},
 		runnerOpts...,
 	)
@@ -214,18 +238,28 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 		return nil, fmt.Errorf("create agent runner: %w", err)
 	}
 
+	profileRunDispatcher, err := agent.NewProfileRunDispatcher(services.agentProfilesSvc, runner)
+	if err != nil {
+		return nil, fmt.Errorf("create profile run dispatcher: %w", err)
+	}
+
 	if deps.AgentRuntimeStorageType == storageTypeDatabase && deps.AgentRuntimeDatabaseAutoMigrate {
-		if err = autoMigrateRuntimeServices(runner, agentProfilesSvc, openCodeBindingSvc); err != nil {
+		if err = autoMigrateRuntimeServices(
+			runner,
+			services.agentProfilesSvc,
+			services.openCodeBindingSvc,
+		); err != nil {
 			return nil, err
 		}
 	}
 
 	httpHandler, err := httpapi.NewHandler(httpapi.HandlerArgs{
 		Runner:                 runner,
-		ProvidersConfigService: providersSvc,
-		AgentProfilesService:   agentProfilesSvc,
-		OpenCodeBindingService: openCodeBindingSvc,
-		OpenCodeLauncher:       openCodeLauncher,
+		ProfileRunDispatcher:   profileRunDispatcher,
+		ProvidersConfigService: services.providersConfigSvc,
+		AgentProfilesService:   services.agentProfilesSvc,
+		OpenCodeBindingService: services.openCodeBindingSvc,
+		OpenCodeLauncher:       services.openCodeLauncher,
 		ModelsLister:           runner.ModelsLocator(),
 	}, httpapi.WithLogger(deps.RootLogger))
 	if err != nil {

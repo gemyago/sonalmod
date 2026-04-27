@@ -85,7 +85,10 @@ func parseModelName(fqModelName string) (string, string, error) {
 // genkit cache (invalidated by UpdatedAt), and creates a new genkit instance when needed.
 //
 //nolint:ireturn // Upstream ADK model resolution uses this interface.
-func (l *ModelsLocator) ResolveModel(ctx context.Context, fqModelName string) (model.LLM, error) {
+func (l *ModelsLocator) ResolveModel(
+	ctx context.Context,
+	fqModelName string,
+) (model.LLM, error) {
 	providerName, _, err := parseModelName(fqModelName)
 	if err != nil {
 		return nil, err

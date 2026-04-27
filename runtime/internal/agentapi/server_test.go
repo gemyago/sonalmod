@@ -48,6 +48,14 @@ func TestAgentAPIServer(t *testing.T) {
 		if profilesSvc == nil {
 			profilesSvc = &mockAgentProfilesService{}
 		}
+
+		var profileRunDispatcher agent.ProfileRunDispatcher
+		if runner != nil {
+			dispatcher, err := agent.NewProfileRunDispatcher(profilesSvc, runner)
+			require.NoError(t, err)
+			profileRunDispatcher = dispatcher
+		}
+
 		return NewAgentAPIServer(ServerParams{
 			Runner:                 runner,
 			Logger:                 log,
@@ -55,6 +63,7 @@ func TestAgentAPIServer(t *testing.T) {
 			RequestMapper:          NewAgentAPIRequestMapper(),
 			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
+			ProfileRunDispatcher:   profileRunDispatcher,
 			AgentProfilesService:   profilesSvc,
 		})
 	}

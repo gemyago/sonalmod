@@ -23,7 +23,7 @@ Currently the public contract includes:
 - `Runner.AutoMigrate()` — runs database schema migrations for the configured session storage (ADK session tables and session metadata when using database storage); safe to call when file or in-memory storage is in use (no-op for non-DB backends)
 - `AgentRunner` — `Run`, `ReadSession`, and `ListSessions` ([agent/runner.go](./agent/runner.go)); `ListSessions` returns paginated `SessionMetadata` (session id, title, timestamps) for the authenticated user
 - `SessionMetadata`, `ListSessionsParams`, `ListSessionsResult` — types for session listing (aliases of internal listing types)
-- HTTP API for agent execution [httpapi/](./httpapi/) (`NewHandler` and related types; `HandlerArgs.Runner` is [`agent.AgentRunner`](./agent/runner.go) — typically `*agent.Runner` — plus `agent.ProvidersConfigService` and optional `agent.ModelsLister` (from `runner.ModelsLocator()`) for the `GET /models` endpoint; the handler wraps the runner for background runs and unified ReadSession)
+- HTTP API for agent execution [httpapi/](./httpapi/) (`NewHandler` and related types; `HandlerArgs.Runner` is [`agent.AgentRunner`](./agent/runner.go) — typically `*agent.Runner` — and `HandlerArgs.ProfileRunDispatcher` is typically built via [`agent.NewProfileRunDispatcher`](./agent/profile_run_dispatcher.go); `agent.ProvidersConfigService` and optional `agent.ModelsLister` (from `runner.ModelsLocator()`) enable provider and `GET /models` endpoints; the handler wraps the runner for background runs and unified ReadSession)
 - HTTP API profile management via `agent-profiles` endpoints in [internal/agentapi/openapi.yaml](./internal/agentapi/openapi.yaml); `httpapi.HandlerArgs` requires `agent.AgentProfilesService` and `agent.ProvidersConfigService` and keeps CRUD logic in internal handlers
 
 Before extending the public contract (e.g. new exported types or methods):
@@ -52,7 +52,7 @@ go generate ./internal/agentapi
 Note: There is an issue with deps incompatibility that may lead to openapi-codegen fail. If this happens, try to install it from main:
 `go get -tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@main` and re-run the generate command.
 
-Public interface: [httpapi/handler.go](./httpapi/handler.go) - must stay small and tight. Embedders pass an [`agent.AgentRunner`](./agent/runner.go) (usually [`*agent.Runner`](./agent/runner.go)) into [`httpapi.NewHandler`](./httpapi/handler.go) via [`HandlerArgs`](./httpapi/handler.go); the handler applies the background-runner adapter internally.
+Public interface: [httpapi/handler.go](./httpapi/handler.go) - must stay small and tight. Embedders pass an [`agent.AgentRunner`](./agent/runner.go) (usually [`*agent.Runner`](./agent/runner.go)) and a profile-aware dispatcher from [`agent.NewProfileRunDispatcher`](./agent/profile_run_dispatcher.go) into [`httpapi.NewHandler`](./httpapi/handler.go) via [`HandlerArgs`]; the handler applies the background-runner adapter internally.
 
 The generated OpenAPI surface includes `GET /sessions` (pagination: required `limit`, optional `offset`) for listing session metadata, and provider `ModelConfig` includes optional `summarization` to designate a model for title generation.
 

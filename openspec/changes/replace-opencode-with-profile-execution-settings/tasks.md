@@ -22,7 +22,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 - [x] 3.1 Introduce a profile execution dispatcher below the HTTP handler that loads profiles and routes regular profiles to the built-in runner using `executionSettings.defaultModel`.
 - [x] 3.2 Teach standard start-run and continue-run paths to accept `profileName` while preserving the current request model path until the API removal task, and add handler tests for regular profile dispatch.
 - [x] 3.3 Add not-found and validation handling for missing, unknown, or unusable `profileName` values using the standard problem/error responses.
-- [ ] 3.4 Update bundled backend wiring in `apps/sonalmod` so the runtime HTTP handler receives the profile-aware execution dependencies without exposing ACP process details.
+- [x] 3.4 Update bundled backend wiring in `apps/sonalmod` so the runtime HTTP handler receives the profile-aware execution dependencies without exposing ACP process details.
 
 ## 4. ACP Stdio Execution Path
 
