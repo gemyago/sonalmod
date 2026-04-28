@@ -34,12 +34,10 @@ type TracerProviderDeps struct {
 }
 
 // NewTracerProvider creates a new TracerProvider with OTLP exporter.
-//
-//nolint:ireturn // OpenTelemetry tracer providers are returned through the upstream interface.
-func NewTracerProvider(
+func NewTracerProvider( //nolint:ireturn
 	ctx context.Context,
 	deps TracerProviderDeps,
-) (trace.TracerProvider, error) { // coverage-ignore -- Little value in testing this factory function
+) (trace.TracerProvider, error) {
 	tracesConfig := deps.TracesConfig
 	res := deps.Resource
 

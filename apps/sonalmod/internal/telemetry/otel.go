@@ -28,8 +28,7 @@ type OTELConfig struct {
 	RuntimeMetrics bool `name:"config.openTelemetry.runtimeMetrics"`
 }
 
-//nolint:ireturn // OpenTelemetry exposes the composite propagator as an interface.
-func NewTextMapPropagator() propagation.TextMapPropagator {
+func NewTextMapPropagator() propagation.TextMapPropagator { //nolint:ireturn
 	return propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},
