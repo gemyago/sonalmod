@@ -12,10 +12,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 )
 
-type regularRunner interface {
-	RunRegularProfile(ctx context.Context, request RegularRunRequest) (*rt.RunResult, error)
-}
-
 type acpExecutor interface {
 	Execute(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
 }
@@ -30,20 +26,9 @@ type RunRequest struct {
 	Message     *rt.MessageContent
 }
 
-// RegularRunRequest is a resolved built-in run derived from a selected regular profile.
-type RegularRunRequest struct {
-	UserID              string
-	SessionID           string
-	Message             *rt.MessageContent
-	Model               string
-	AgentName           string
-	ProfileInstructions string
-}
-
-// Dispatcher resolves agent profiles and dispatches their execution mode.
+// Dispatcher resolves agent profiles and dispatches ACP stdio profile execution.
 type Dispatcher struct {
 	profiles        ap.AgentProfilesService
-	regularRunner   regularRunner
 	acpExecutor     acpExecutor
 	sessionRecorder SessionRecorder
 }
@@ -51,12 +36,10 @@ type Dispatcher struct {
 // NewDispatcher constructs a profile execution dispatcher.
 func NewDispatcher(
 	profiles ap.AgentProfilesService,
-	regularRunner regularRunner,
 	sessionRecorder SessionRecorder,
 ) (*Dispatcher, error) {
 	return newDispatcherWithACPExecutor(
 		profiles,
-		regularRunner,
 		codinglane.NewACPStdioExecutor(),
 		sessionRecorder,
 	)
@@ -64,15 +47,11 @@ func NewDispatcher(
 
 func newDispatcherWithACPExecutor(
 	profiles ap.AgentProfilesService,
-	regularRunner regularRunner,
 	acpExecutor acpExecutor,
 	sessionRecorder SessionRecorder,
 ) (*Dispatcher, error) {
 	if profiles == nil {
 		return nil, errors.New("profiles service is required")
-	}
-	if regularRunner == nil {
-		return nil, errors.New("regular runner is required")
 	}
 	if acpExecutor == nil {
 		return nil, errors.New("ACP stdio executor is required")
@@ -80,7 +59,6 @@ func newDispatcherWithACPExecutor(
 
 	return &Dispatcher{
 		profiles:        profiles,
-		regularRunner:   regularRunner,
 		acpExecutor:     acpExecutor,
 		sessionRecorder: sessionRecorder,
 	}, nil
@@ -104,7 +82,7 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 
 	switch profile.ExecutionSettings.ModeOrDefault() {
 	case ap.ExecutionModeRegular:
-		return d.runRegularProfile(ctx, request, profile)
+		return nil, d.unsupportedProfileExecution(profile)
 	case ap.ExecutionModeACPStdio:
 		return d.runACPProfile(ctx, request, profile)
 	default:
@@ -139,35 +117,6 @@ func (d *Dispatcher) loadProfile(
 	}
 
 	return profile, nil
-}
-
-func (d *Dispatcher) runRegularProfile(
-	ctx context.Context,
-	request RunRequest,
-	profile *ap.AgentProfile,
-) (*rt.RunResult, error) {
-	modelName := profile.ExecutionSettings.DefaultModel
-	if override := strings.TrimSpace(request.Model); override != "" {
-		modelName = override
-	}
-
-	result, runErr := d.regularRunner.RunRegularProfile(ctx, RegularRunRequest{
-		UserID:              request.UserID,
-		SessionID:           request.SessionID,
-		Message:             request.Message,
-		Model:               modelName,
-		AgentName:           profile.Name,
-		ProfileInstructions: profile.Instructions,
-	})
-	if runErr != nil {
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindExecution,
-			"run-regular-profile",
-			fmt.Errorf("run profile %q: %w", profile.Name, runErr),
-		)
-	}
-
-	return result, nil
 }
 
 func (d *Dispatcher) runACPProfile(

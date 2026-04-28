@@ -52,17 +52,6 @@ func (s *testProfilesService) AutoMigrate() error {
 	panic("unexpected AutoMigrate call")
 }
 
-type testRegularRunner struct {
-	run func(ctx context.Context, request RegularRunRequest) (*rt.RunResult, error)
-}
-
-func (r *testRegularRunner) RunRegularProfile(
-	ctx context.Context,
-	request RegularRunRequest,
-) (*rt.RunResult, error) {
-	return r.run(ctx, request)
-}
-
 type testACPExecutor struct {
 	execute func(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
 }
@@ -74,27 +63,29 @@ func (e *testACPExecutor) Execute(
 	return e.execute(ctx, request)
 }
 
+type testSessionRecorder struct {
+	record func(ctx context.Context, request RunRequest, events []*rt.SessionEvent) error
+}
+
+func (r *testSessionRecorder) Record(
+	ctx context.Context,
+	request RunRequest,
+	events []*rt.SessionEvent,
+) error {
+	return r.record(ctx, request, events)
+}
+
 func TestNewDispatcher(t *testing.T) {
 	t.Parallel()
 
 	t.Run("requires profiles service", func(t *testing.T) {
 		t.Parallel()
 
-		dispatcher, err := NewDispatcher(nil, &testRegularRunner{}, nil)
+		dispatcher, err := NewDispatcher(nil, nil)
 
 		require.Error(t, err)
 		assert.Nil(t, dispatcher)
 		assert.ErrorContains(t, err, "profiles service is required")
-	})
-
-	t.Run("requires regular runner", func(t *testing.T) {
-		t.Parallel()
-
-		dispatcher, err := NewDispatcher(&testProfilesService{}, nil, nil)
-
-		require.Error(t, err)
-		assert.Nil(t, dispatcher)
-		assert.ErrorContains(t, err, "regular runner is required")
 	})
 
 	t.Run("requires ACP stdio executor", func(t *testing.T) {
@@ -102,7 +93,6 @@ func TestNewDispatcher(t *testing.T) {
 
 		dispatcher, err := newDispatcherWithACPExecutor(
 			&testProfilesService{},
-			&testRegularRunner{},
 			nil,
 			nil,
 		)
@@ -129,119 +119,6 @@ func TestDispatcherRun(t *testing.T) {
 		}
 	}
 
-	makeResult := func(sessionID string) *rt.RunResult {
-		return rt.NewRunResult(func(func(*rt.SessionEvent, error) bool) {}, sessionID)
-	}
-
-	t.Run("regular profile dispatches with default model", func(t *testing.T) {
-		t.Parallel()
-
-		request := newRequest()
-		modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		expectedResult := makeResult(request.SessionID)
-
-		dispatcher, err := NewDispatcher(
-			&testProfilesService{
-				get: func(_ context.Context, name string) (*ap.AgentProfile, error) {
-					assert.Equal(t, request.ProfileName, name)
-					return &ap.AgentProfile{
-						Name: request.ProfileName,
-						ExecutionSettings: ap.ExecutionSettings{
-							Mode:         ap.ExecutionModeRegular,
-							DefaultModel: modelName,
-						},
-					}, nil
-				},
-			},
-			&testRegularRunner{
-				run: func(_ context.Context, got RegularRunRequest) (*rt.RunResult, error) {
-					assert.Equal(t, request.UserID, got.UserID)
-					assert.Equal(t, request.SessionID, got.SessionID)
-					assert.Equal(t, request.Message, got.Message)
-					assert.Equal(t, modelName, got.Model)
-					assert.Equal(t, request.ProfileName, got.AgentName)
-					return expectedResult, nil
-				},
-			},
-			nil,
-		)
-		require.NoError(t, err)
-
-		result, runErr := dispatcher.Run(t.Context(), request)
-
-		require.NoError(t, runErr)
-		assert.Same(t, expectedResult, result)
-	})
-
-	t.Run("omitted mode defaults to regular dispatch", func(t *testing.T) {
-		t.Parallel()
-
-		request := newRequest()
-		modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		expectedResult := makeResult(request.SessionID)
-
-		dispatcher, err := NewDispatcher(
-			&testProfilesService{
-				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
-					return &ap.AgentProfile{
-						Name: request.ProfileName,
-						ExecutionSettings: ap.ExecutionSettings{
-							DefaultModel: modelName,
-						},
-					}, nil
-				},
-			},
-			&testRegularRunner{
-				run: func(_ context.Context, got RegularRunRequest) (*rt.RunResult, error) {
-					assert.Equal(t, modelName, got.Model)
-					return expectedResult, nil
-				},
-			},
-			nil,
-		)
-		require.NoError(t, err)
-
-		result, runErr := dispatcher.Run(t.Context(), request)
-
-		require.NoError(t, runErr)
-		assert.Same(t, expectedResult, result)
-	})
-
-	t.Run("request model overrides regular profile default model", func(t *testing.T) {
-		t.Parallel()
-
-		request := newRequest()
-		request.Model = fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		defaultModel := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		expectedResult := makeResult(request.SessionID)
-
-		dispatcher, err := NewDispatcher(
-			&testProfilesService{
-				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
-					return &ap.AgentProfile{
-						Name: request.ProfileName,
-						ExecutionSettings: ap.ExecutionSettings{
-							DefaultModel: defaultModel,
-						},
-					}, nil
-				},
-			},
-			&testRegularRunner{
-				run: func(_ context.Context, got RegularRunRequest) (*rt.RunResult, error) {
-					assert.Equal(t, request.Model, got.Model)
-					return expectedResult, nil
-				},
-			},
-			nil,
-		)
-		require.NoError(t, err)
-
-		result, runErr := dispatcher.Run(t.Context(), request)
-
-		require.NoError(t, runErr)
-		assert.Same(t, expectedResult, result)
-	})
-
 	t.Run("missing profile name returns validation error", func(t *testing.T) {
 		t.Parallel()
 
@@ -249,11 +126,6 @@ func TestDispatcherRun(t *testing.T) {
 			&testProfilesService{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					panic("Get should not be called")
-				},
-			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
 				},
 			},
 			nil,
@@ -278,11 +150,6 @@ func TestDispatcherRun(t *testing.T) {
 			&testProfilesService{
 				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
 					return nil, ap.ErrAgentProfileNotFound
-				},
-			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
 				},
 			},
 			nil,
@@ -311,11 +178,6 @@ func TestDispatcherRun(t *testing.T) {
 					return nil, expectedErr
 				},
 			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
-				},
-			},
 			nil,
 		)
 		require.NoError(t, err)
@@ -329,6 +191,132 @@ func TestDispatcherRun(t *testing.T) {
 		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
 		require.ErrorIs(t, runErr, expectedErr)
 		assert.Contains(t, dispatchErr.Error(), "load-profile")
+	})
+
+	t.Run("regular execution mode returns unsupported error", func(t *testing.T) {
+		t.Parallel()
+
+		request := newRequest()
+
+		dispatcher, err := NewDispatcher(
+			&testProfilesService{
+				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name: request.ProfileName,
+						ExecutionSettings: ap.ExecutionSettings{
+							Mode: ap.ExecutionModeRegular,
+						},
+					}, nil
+				},
+			},
+			nil,
+		)
+		require.NoError(t, err)
+
+		result, runErr := dispatcher.Run(t.Context(), request)
+
+		require.Error(t, runErr)
+		assert.Nil(t, result)
+		var dispatchErr *profilerun.Error
+		require.ErrorAs(t, runErr, &dispatchErr)
+		assert.Equal(t, profilerun.ErrorKindUnsupported, dispatchErr.Kind)
+		assert.Contains(t, dispatchErr.Error(), "dispatch-profile")
+	})
+
+	t.Run("acp request mapping failure returns execution error", func(t *testing.T) {
+		t.Parallel()
+
+		request := newRequest()
+
+		dispatcher, err := newDispatcherWithACPExecutor(
+			&testProfilesService{
+				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name: request.ProfileName,
+						ExecutionSettings: ap.ExecutionSettings{
+							Mode: ap.ExecutionModeACPStdio,
+							AgentCommand: ap.ACPStdioAgentCommand{
+								Command: "opencode",
+							},
+						},
+					}, nil
+				},
+			},
+			&testACPExecutor{
+				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+					panic("Execute should not be called")
+				},
+			},
+			nil,
+		)
+		require.NoError(t, err)
+
+		result, runErr := dispatcher.Run(t.Context(), RunRequest{
+			ProfileName: request.ProfileName,
+			UserID:      request.UserID,
+			SessionID:   request.SessionID,
+		})
+
+		require.Error(t, runErr)
+		assert.Nil(t, result)
+		var dispatchErr *profilerun.Error
+		require.ErrorAs(t, runErr, &dispatchErr)
+		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
+		assert.Contains(t, dispatchErr.Error(), "map-acp-stdio-request")
+	})
+
+	t.Run("acp session recorder failure returns execution error", func(t *testing.T) {
+		t.Parallel()
+
+		request := newRequest()
+		expectedErr := errors.New(fake.Lorem().Sentence(4))
+
+		dispatcher, err := newDispatcherWithACPExecutor(
+			&testProfilesService{
+				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name: request.ProfileName,
+						ExecutionSettings: ap.ExecutionSettings{
+							Mode: ap.ExecutionModeACPStdio,
+							AgentCommand: ap.ACPStdioAgentCommand{
+								Command: "opencode",
+								Args:    []string{"acp"},
+							},
+						},
+					}, nil
+				},
+			},
+			&testACPExecutor{
+				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+					return &codinglane.ACPStdioExecutorResult{
+						Updates: []codinglane.ACPStdioUpdate{
+							{
+								Type: "final",
+								Payload: json.RawMessage(
+									`{"message":"` + fake.Lorem().Sentence(2) + `"}`,
+								),
+							},
+						},
+					}, nil
+				},
+			},
+			&testSessionRecorder{
+				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
+					return expectedErr
+				},
+			},
+		)
+		require.NoError(t, err)
+
+		result, runErr := dispatcher.Run(t.Context(), request)
+
+		require.Error(t, runErr)
+		assert.Nil(t, result)
+		var dispatchErr *profilerun.Error
+		require.ErrorAs(t, runErr, &dispatchErr)
+		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
+		require.ErrorIs(t, runErr, expectedErr)
+		assert.Contains(t, dispatchErr.Error(), "record-acp-stdio-session")
 	})
 
 	t.Run("acp stdio profile returns unsupported error", func(t *testing.T) {
@@ -358,11 +346,6 @@ func TestDispatcherRun(t *testing.T) {
 							Cwd: "/workspace",
 						},
 					}, nil
-				},
-			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
 				},
 			},
 			&testACPExecutor{
@@ -444,11 +427,6 @@ func TestDispatcherRun(t *testing.T) {
 					}, nil
 				},
 			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
-				},
-			},
 			&testACPExecutor{
 				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					return nil, expectedErr
@@ -487,11 +465,6 @@ func TestDispatcherRun(t *testing.T) {
 					}, nil
 				},
 			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
-				},
-			},
 			nil,
 		)
 		require.NoError(t, err)
@@ -504,43 +477,6 @@ func TestDispatcherRun(t *testing.T) {
 		require.ErrorAs(t, runErr, &dispatchErr)
 		assert.Equal(t, profilerun.ErrorKindUnsupported, dispatchErr.Kind)
 		assert.Contains(t, dispatchErr.Error(), "dispatch-profile")
-	})
-
-	t.Run("runner failure returns execution error", func(t *testing.T) {
-		t.Parallel()
-
-		request := newRequest()
-		modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		expectedErr := errors.New(fake.Lorem().Sentence(4))
-
-		dispatcher, err := NewDispatcher(
-			&testProfilesService{
-				get: func(_ context.Context, _ string) (*ap.AgentProfile, error) {
-					return &ap.AgentProfile{
-						Name: request.ProfileName,
-						ExecutionSettings: ap.ExecutionSettings{
-							DefaultModel: modelName,
-						},
-					}, nil
-				},
-			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					return nil, expectedErr
-				},
-			},
-			nil,
-		)
-		require.NoError(t, err)
-
-		result, runErr := dispatcher.Run(t.Context(), request)
-
-		require.Error(t, runErr)
-		assert.Nil(t, result)
-		var dispatchErr *profilerun.Error
-		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
-		assert.ErrorIs(t, runErr, expectedErr)
 	})
 
 	t.Run("acp stdio success persists replayable session history", func(t *testing.T) {
@@ -567,11 +503,6 @@ func TestDispatcherRun(t *testing.T) {
 							},
 						},
 					}, nil
-				},
-			},
-			&testRegularRunner{
-				run: func(context.Context, RegularRunRequest) (*rt.RunResult, error) {
-					panic("Run should not be called")
 				},
 			},
 			&testACPExecutor{

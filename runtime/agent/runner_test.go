@@ -10,7 +10,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
@@ -588,45 +587,7 @@ func TestRunner(t *testing.T) {
 				require.ErrorAs(t, err, &profileRunErr)
 				assert.Equal(t, profilerun.ErrorKindUnsupported, profileRunErr.Kind)
 			})
-
-			t.Run("regular runner adapter forwards instructions", func(t *testing.T) {
-				providerName := fake.Lorem().Word()
-				modelName := fake.Lorem().Word()
-				fqModel := providerName + "/" + modelName
-				instructions := fake.Lorem().Sentence(5)
-				agentName := "profile-" + fake.Lorem().Word()
-
-				providersSvc := lp.NewMockProvidersConfigService(t)
-				providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
-					Name:   providerName,
-					APIKey: fake.Lorem().Word(),
-				}, nil)
-
-				fakeG := internal.NewFakeGenkitInstance()
-				runner, err := NewRunner(RunnerArgs{
-					ProvidersConfigService: providersSvc,
-					AgentProfilesService:   newTestProfilesService(t),
-					genkitInitFunc:         fakeG.InitFunc(),
-				}, WithLogger(rootTestLogger))
-				require.NoError(t, err)
-
-				adapter := &runnerProfileRegularRunner{runner: runner}
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
-				}
-				result, err := adapter.RunRegularProfile(t.Context(), profileexec.RegularRunRequest{
-					UserID:              fake.UUID().V4(),
-					SessionID:           fake.UUID().V4(),
-					Message:             msg,
-					Model:               fqModel,
-					AgentName:           agentName,
-					ProfileInstructions: instructions,
-				})
-				require.NoError(t, err)
-				require.NotNil(t, result)
-			})
 		})
-
 		t.Run("tools registry path still resolves model and runs", func(t *testing.T) {
 			providerName := fake.Lorem().Word()
 			modelName := fake.Lorem().Word()

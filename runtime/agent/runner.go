@@ -204,11 +204,7 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 	}
 
 	sessionRecorder, _ := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
-	profileRuns, _ := profileexec.NewDispatcher(
-		args.AgentProfilesService,
-		&runnerProfileRegularRunner{runner: runner},
-		sessionRecorder,
-	)
+	profileRuns, _ := profileexec.NewDispatcher(args.AgentProfilesService, sessionRecorder)
 	runner.profileRuns = profileRuns
 
 	return runner, nil
@@ -395,34 +391,6 @@ func (r *Runner) runProfileExecution(
 		SessionID: params.SessionID,
 		Message:   params.Message,
 		Model:     modelName,
-	})
-}
-
-type runnerProfileRegularRunner struct {
-	runner *Runner
-}
-
-func (r *runnerProfileRegularRunner) RunRegularProfile(
-	ctx context.Context,
-	request profileexec.RegularRunRequest,
-) (*RunResult, error) {
-	ar, err := r.runner.runnerFactory.NewAgentRunner(
-		ctx,
-		r.runner.newAgentRunnerParams(
-			request.Model,
-			request.AgentName,
-			request.ProfileInstructions,
-		),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return ar.Run(ctx, RunParams{
-		UserID:    request.UserID,
-		SessionID: request.SessionID,
-		Message:   request.Message,
-		Model:     request.Model,
 	})
 }
 
