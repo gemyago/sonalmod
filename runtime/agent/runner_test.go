@@ -24,11 +24,18 @@ import (
 func TestRunner(t *testing.T) {
 	fake := faker.New()
 	rootTestLogger := internal.RootTestLogger()
+	newTestProfilesService := func(t *testing.T) AgentProfilesService {
+		t.Helper()
+		svc, err := NewFileAgentProfilesService(t.TempDir(), rootTestLogger)
+		require.NoError(t, err)
+		return svc
+	}
 	t.Run("NewRunner", func(t *testing.T) {
 		t.Run("succeeds with ProvidersConfigService", func(t *testing.T) {
 			providersSvc := lp.NewMockProvidersConfigService(t)
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 			require.NotNil(t, runner)
@@ -37,6 +44,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds with optional tools registry", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			},
 				WithLogger(rootTestLogger),
 				WithToolsRegistry(NewToolsRegistry()),
@@ -48,6 +56,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds with system prompt fragments", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			},
 				WithLogger(rootTestLogger),
 				WithSystemPromptFragments(SystemPromptFragment{
@@ -60,15 +69,26 @@ func TestRunner(t *testing.T) {
 		})
 
 		t.Run("returns error when ProvidersConfigService is nil", func(t *testing.T) {
-			_, err := NewRunner(RunnerArgs{})
+			_, err := NewRunner(RunnerArgs{
+				AgentProfilesService: newTestProfilesService(t),
+			})
 			require.Error(t, err)
 			require.ErrorContains(t, err, "providers config service is required")
+		})
+
+		t.Run("returns error when AgentProfilesService is nil", func(t *testing.T) {
+			_, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			})
+			require.Error(t, err)
+			require.ErrorContains(t, err, "agent profiles service is required")
 		})
 
 		t.Run("succeeds with file system storage", func(t *testing.T) {
 			dir := t.TempDir()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithFileSystemStorage(dir))
 			require.NoError(t, err)
 			require.NotNil(t, runner)
@@ -77,6 +97,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns error when file storage base dir is invalid", func(t *testing.T) {
 			_, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithFileSystemStorage(""))
 			require.Error(t, err)
 			require.ErrorContains(t, err, "session storage")
@@ -85,6 +106,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds with database storage", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithDatabaseStorage(":memory:"))
 			require.NoError(t, err)
 			require.NotNil(t, runner)
@@ -94,6 +116,7 @@ func TestRunner(t *testing.T) {
 			prefix := fake.Lexify("?????_")
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			},
 				WithLogger(rootTestLogger),
 				WithDatabaseStorage(":memory:"),
@@ -106,6 +129,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns error when database DSN is invalid", func(t *testing.T) {
 			_, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithDatabaseStorage("host=bad port=0 dbname=none"))
 			require.Error(t, err)
 			require.ErrorContains(t, err, "session storage")
@@ -132,6 +156,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns nil when using in-memory storage", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 			require.NoError(t, runner.AutoMigrate())
@@ -141,6 +166,7 @@ func TestRunner(t *testing.T) {
 			dir := t.TempDir()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithFileSystemStorage(dir))
 			require.NoError(t, err)
 			require.NoError(t, runner.AutoMigrate())
@@ -149,6 +175,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds when using database storage", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithDatabaseStorage(":memory:"))
 			require.NoError(t, err)
 			require.NoError(t, runner.AutoMigrate())
@@ -168,6 +195,7 @@ func TestRunner(t *testing.T) {
 			fakeG := internal.NewFakeGenkitInstance()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 				genkitInitFunc:         fakeG.InitFunc(),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
@@ -219,6 +247,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns error when model is empty", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 
@@ -229,22 +258,6 @@ func TestRunner(t *testing.T) {
 			})
 			require.Error(t, err)
 			require.ErrorContains(t, err, "model is required")
-		})
-
-		t.Run("returns error when profileName is provided but profile execution is not configured", func(t *testing.T) {
-			runner, err := NewRunner(RunnerArgs{
-				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-			}, WithLogger(rootTestLogger))
-			require.NoError(t, err)
-
-			_, err = runner.Run(t.Context(), RunParams{
-				UserID:      fake.UUID().V4(),
-				SessionID:   fake.UUID().V4(),
-				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Word()}}},
-				ProfileName: "profile-" + fake.Lorem().Word(),
-			})
-			require.Error(t, err)
-			require.ErrorContains(t, err, "profile execution unavailable")
 		})
 
 		t.Run("resolves model via ModelsLocator when ProvidersConfigService is set", func(t *testing.T) {
@@ -261,6 +274,7 @@ func TestRunner(t *testing.T) {
 			fakeG := internal.NewFakeGenkitInstance()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 				genkitInitFunc:         fakeG.InitFunc(),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
@@ -336,6 +350,7 @@ func TestRunner(t *testing.T) {
 			fakeG := internal.NewFakeGenkitInstance()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 				genkitInitFunc:         fakeG.InitFunc(),
 			},
 				WithLogger(rootTestLogger),
@@ -363,6 +378,7 @@ func TestRunner(t *testing.T) {
 
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 

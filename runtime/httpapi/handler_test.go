@@ -14,19 +14,20 @@ import (
 
 func TestHandler(t *testing.T) {
 	rootTestLogger := internal.RootTestLogger()
-	newTestRunner := func(t *testing.T) *agent.Runner {
-		t.Helper()
-		runner, err := agent.NewRunner(agent.RunnerArgs{
-			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-		}, agent.WithLogger(rootTestLogger))
-		require.NoError(t, err)
-		return runner
-	}
 	newTestProfilesService := func(t *testing.T) agent.AgentProfilesService {
 		t.Helper()
 		svc, err := agent.NewFileAgentProfilesService(t.TempDir(), rootTestLogger)
 		require.NoError(t, err)
 		return svc
+	}
+	newTestRunner := func(t *testing.T) *agent.Runner {
+		t.Helper()
+		runner, err := agent.NewRunner(agent.RunnerArgs{
+			ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			AgentProfilesService:   newTestProfilesService(t),
+		}, agent.WithLogger(rootTestLogger))
+		require.NoError(t, err)
+		return runner
 	}
 
 	t.Run("creates handler", func(t *testing.T) {

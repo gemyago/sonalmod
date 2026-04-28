@@ -39,8 +39,7 @@ var _ internal.ToolsProvider = (*toolsRegistryProvider)(nil)
 type RunnerArgs struct {
 	// ProvidersConfigService is required. NewRunner wires a ModelsLocator for LLM resolution.
 	ProvidersConfigService ProvidersConfigService
-	// AgentProfilesService enables profile-backed run dispatch when profileName is provided.
-	// When nil, profileName-based execution is unavailable.
+	// AgentProfilesService is required. NewRunner wires profile-backed execution from it.
 	AgentProfilesService AgentProfilesService
 
 	// genkitInitFunc overrides the genkit initialization function used by ModelsLocator.
@@ -134,6 +133,9 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 	if args.ProvidersConfigService == nil {
 		return nil, errors.New("providers config service is required")
 	}
+	if args.AgentProfilesService == nil {
+		return nil, errors.New("agent profiles service is required")
+	}
 
 	rOpts := &runnerOpts{
 		logger: slog.Default(),
@@ -197,23 +199,21 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		modelsLocator:   modelsLocator,
 	}
 
-	if args.AgentProfilesService != nil {
-		sessionRecorder, recorderErr := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
-		if recorderErr != nil {
-			return nil, fmt.Errorf("create profile run dispatcher: %w", recorderErr)
-		}
-
-		profileRuns, dispatchErr := profileexec.NewDispatcher(
-			args.AgentProfilesService,
-			&runnerProfileRegularRunner{runner: runner},
-			sessionRecorder,
-		)
-		if dispatchErr != nil {
-			return nil, fmt.Errorf("create profile run dispatcher: %w", dispatchErr)
-		}
-
-		runner.profileRuns = profileRuns
+	sessionRecorder, recorderErr := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
+	if recorderErr != nil {
+		return nil, fmt.Errorf("create profile run dispatcher: %w", recorderErr)
 	}
+
+	profileRuns, dispatchErr := profileexec.NewDispatcher(
+		args.AgentProfilesService,
+		&runnerProfileRegularRunner{runner: runner},
+		sessionRecorder,
+	)
+	if dispatchErr != nil {
+		return nil, fmt.Errorf("create profile run dispatcher: %w", dispatchErr)
+	}
+
+	runner.profileRuns = profileRuns
 
 	return runner, nil
 }
