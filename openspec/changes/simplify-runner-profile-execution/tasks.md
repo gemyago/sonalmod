@@ -28,7 +28,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 
 ## 5. Remove Generic Profile Dispatcher
 
-- [ ] 5.1 Delete `profileexec.Dispatcher`, `RegularRunRequest`, dispatcher-only tests, and the `Runner.profileRuns` field after runner-owned dispatch and ACP delegation are in place.
+- [x] 5.1 Delete `profileexec.Dispatcher`, `RegularRunRequest`, dispatcher-only tests, and the `Runner.profileRuns` field after runner-owned dispatch and ACP delegation are in place.
 - [ ] 5.2 Verify no remaining generic package, type, or test names imply a profile execution wrapper layer; surviving code must be runner-owned or ACP-specific.
 
 ## 6. Final Verification
