@@ -289,13 +289,18 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 	if modelName == "" {
 		return nil, errors.New("model is required")
 	}
+	return r.runBuiltInExecution(ctx, params)
+}
+
+func (r *Runner) runBuiltInExecution(ctx context.Context, params RunParams) (*RunResult, error) {
 	ar, err := r.runnerFactory.NewAgentRunner(
 		ctx,
-		r.newAgentRunnerParams(modelName, defaultRunnerAgentName, ""),
+		r.newAgentRunnerParams(params.Model, defaultRunnerAgentName, ""),
 	)
 	if err != nil {
 		return nil, err
 	}
+
 	return ar.Run(ctx, params)
 }
 

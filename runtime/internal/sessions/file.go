@@ -342,14 +342,14 @@ func (s *fileSession) UserID() string {
 	return s.userID
 }
 
-func (s *fileSession) State() session.State { //nolint:ireturn
+func (s *fileSession) State() session.State {
 	return &fileSessionState{
 		mu:    &s.mu,
 		state: s.state,
 	}
 }
 
-func (s *fileSession) Events() session.Events { //nolint:ireturn
+func (s *fileSession) Events() session.Events {
 	return fileSessionEvents(s.events)
 }
 

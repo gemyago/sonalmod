@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +22,11 @@ import (
 
 func TestHTTPServer(t *testing.T) {
 	makeDeps := func() HTTPServerDeps {
-		port := 50000 + rand.IntN(15000)
+		listener, err := net.Listen("tcp", "localhost:0")
+		require.NoError(t, err)
+		port := listener.Addr().(*net.TCPAddr).Port
+		require.NoError(t, listener.Close())
+
 		return HTTPServerDeps{
 			RootLogger:    telemetry.RootTestLogger(),
 			Host:          "localhost",
