@@ -1,4 +1,4 @@
-package profileexec
+package acpstdio
 
 import (
 	"bytes"
@@ -12,12 +12,28 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 )
 
-func newACPStdioRunResult(
+// NewRunResult converts ACP stdio executor output into a runtime run result.
+func NewRunResult(
 	sessionID string,
 	result *codinglane.ACPStdioExecutorResult,
 ) *rt.RunResult {
 	events := buildACPStdioSessionEvents(result)
 	return rt.NewRunResult(sessionEventSeq(events), sessionID)
+}
+
+// BuildSessionEvents maps ACP stdio executor output into session events.
+func BuildSessionEvents(result *codinglane.ACPStdioExecutorResult) []*rt.SessionEvent {
+	return buildACPStdioSessionEvents(result)
+}
+
+// ErrorSessionEvent maps an ACP stdio execution error into a session event.
+func ErrorSessionEvent(err error) *rt.SessionEvent {
+	return acpStdioErrorSessionEvent(err)
+}
+
+// MessageContentText extracts text from a runtime message content payload.
+func MessageContentText(message *rt.MessageContent) string {
+	return messageContentText(message)
 }
 
 func sessionEventSeq(events []*rt.SessionEvent) iter.Seq2[*rt.SessionEvent, error] {

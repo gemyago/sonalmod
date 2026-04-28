@@ -1,4 +1,4 @@
-package profileexec
+package acpstdio
 
 import (
 	"context"
@@ -7,11 +7,22 @@ import (
 	"strings"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
+	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
 
-// SessionRecorder persists profile-backed run history through the standard session storage path.
+// RunRequest identifies the ACP-backed profile run to execute.
+type RunRequest struct {
+	ProfileName string
+	Profile     *ap.AgentProfile
+	Model       string
+	UserID      string
+	SessionID   string
+	Message     *rt.MessageContent
+}
+
+// SessionRecorder persists ACP profile run history through the standard session storage path.
 type SessionRecorder interface {
 	Record(ctx context.Context, request RunRequest, events []*rt.SessionEvent) error
 }

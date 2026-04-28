@@ -9,6 +9,7 @@ import (
 
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/gemyago/sonalmod/runtime/internal"
+	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
@@ -203,7 +204,7 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		profiles:        args.AgentProfilesService,
 	}
 
-	sessionRecorder, _ := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
+	sessionRecorder, _ := acpstdio.NewSessionRecorder(defaultRunnerAppName, ss)
 	profileRuns, _ := profileexec.NewDispatcher(args.AgentProfilesService, sessionRecorder)
 	runner.profileRuns = profileRuns
 
@@ -350,7 +351,7 @@ func (r *Runner) runProfileBackedExecution(
 			)
 		}
 
-		return r.profileRuns.Run(ctx, profileexec.RunRequest{
+		return r.profileRuns.Run(ctx, acpstdio.RunRequest{
 			ProfileName: profileName,
 			Profile:     profile,
 			Model:       requestModel,

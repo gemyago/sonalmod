@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
+	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
@@ -16,27 +17,17 @@ type acpExecutor interface {
 	Execute(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
 }
 
-// RunRequest identifies the profile-backed run to execute.
-type RunRequest struct {
-	ProfileName string
-	Profile     *ap.AgentProfile
-	Model       string
-	UserID      string
-	SessionID   string
-	Message     *rt.MessageContent
-}
-
 // Dispatcher resolves agent profiles and dispatches ACP stdio profile execution.
 type Dispatcher struct {
 	profiles        ap.AgentProfilesService
 	acpExecutor     acpExecutor
-	sessionRecorder SessionRecorder
+	sessionRecorder acpstdio.SessionRecorder
 }
 
 // NewDispatcher constructs a profile execution dispatcher.
 func NewDispatcher(
 	profiles ap.AgentProfilesService,
-	sessionRecorder SessionRecorder,
+	sessionRecorder acpstdio.SessionRecorder,
 ) (*Dispatcher, error) {
 	return newDispatcherWithACPExecutor(
 		profiles,
@@ -48,7 +39,7 @@ func NewDispatcher(
 func newDispatcherWithACPExecutor(
 	profiles ap.AgentProfilesService,
 	acpExecutor acpExecutor,
-	sessionRecorder SessionRecorder,
+	sessionRecorder acpstdio.SessionRecorder,
 ) (*Dispatcher, error) {
 	if profiles == nil {
 		return nil, errors.New("profiles service is required")
@@ -65,7 +56,7 @@ func newDispatcherWithACPExecutor(
 }
 
 // Run loads the selected profile and executes it through the configured mode.
-func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult, error) {
+func (d *Dispatcher) Run(ctx context.Context, request acpstdio.RunRequest) (*rt.RunResult, error) {
 	profileName := strings.TrimSpace(request.ProfileName)
 	if profileName == "" {
 		return nil, profilerun.WrapError(
@@ -121,12 +112,12 @@ func (d *Dispatcher) loadProfile(
 
 func (d *Dispatcher) runACPProfile(
 	ctx context.Context,
-	request RunRequest,
+	request acpstdio.RunRequest,
 	profile *ap.AgentProfile,
 ) (*rt.RunResult, error) {
 	acpRequest, mapErr := codinglane.MapACPStdioExecutorRequest(
 		*profile,
-		messageContentText(request.Message),
+		acpstdio.MessageContentText(request.Message),
 	)
 	if mapErr != nil {
 		return nil, profilerun.WrapError(
@@ -138,22 +129,28 @@ func (d *Dispatcher) runACPProfile(
 
 	acpResult, execErr := d.acpExecutor.Execute(ctx, acpRequest)
 	if execErr != nil {
-		events := []*rt.SessionEvent{acpStdioErrorSessionEvent(execErr)}
+		events := []*rt.SessionEvent{acpstdio.ErrorSessionEvent(execErr)}
 		recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
 		if recordErr != nil {
 			return nil, recordErr
 		}
 
-		return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
+		return rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
+			for _, event := range events {
+				if !yield(event, nil) {
+					return
+				}
+			}
+		}, request.SessionID), nil
 	}
 
-	events := buildACPStdioSessionEvents(acpResult)
+	events := acpstdio.BuildSessionEvents(acpResult)
 	recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
 	if recordErr != nil {
 		return nil, recordErr
 	}
 
-	return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
+	return acpstdio.NewRunResult(request.SessionID, acpResult), nil
 }
 
 func (d *Dispatcher) unsupportedProfileExecution(profile *ap.AgentProfile) error {
@@ -171,7 +168,7 @@ func (d *Dispatcher) unsupportedProfileExecution(profile *ap.AgentProfile) error
 func (d *Dispatcher) recordACPStdioEvents(
 	ctx context.Context,
 	profileName string,
-	request RunRequest,
+	request acpstdio.RunRequest,
 	events []*rt.SessionEvent,
 ) error {
 	if d.sessionRecorder == nil {

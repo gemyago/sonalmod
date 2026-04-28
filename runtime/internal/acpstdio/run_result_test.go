@@ -1,4 +1,4 @@
-package profileexec
+package acpstdio
 
 import (
 	"encoding/json"
@@ -29,14 +29,14 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 		return events
 	}
 
-	t.Run("newACPStdioRunResult maps progress and final updates", func(t *testing.T) {
+	t.Run("new run result maps progress and final updates", func(t *testing.T) {
 		t.Parallel()
 
 		progressText := fake.Lorem().Sentence(3)
 		finalText := fake.Lorem().Sentence(4)
 		sessionID := fake.UUID().V4()
 
-		result := newACPStdioRunResult(sessionID, &codinglane.ACPStdioExecutorResult{
+		result := NewRunResult(sessionID, &codinglane.ACPStdioExecutorResult{
 			Updates: []codinglane.ACPStdioUpdate{
 				{
 					Type:    "progress",
@@ -68,7 +68,7 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 	t.Run("prompt result fallback preserves JSON when no text field exists", func(t *testing.T) {
 		t.Parallel()
 
-		result := newACPStdioRunResult(fake.UUID().V4(), &codinglane.ACPStdioExecutorResult{
+		result := NewRunResult(fake.UUID().V4(), &codinglane.ACPStdioExecutorResult{
 			PromptResult: json.RawMessage("{\n  \"ok\": true,\n  \"count\": 2\n}"),
 		})
 
@@ -95,12 +95,12 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 			Op:   fake.Lorem().Word(),
 			Err:  errors.New(fake.Lorem().Sentence(4)),
 		}
-		typedEvent := acpStdioErrorSessionEvent(typedErr)
+		typedEvent := ErrorSessionEvent(typedErr)
 		assert.Equal(t, "acp-stdio-protocol", typedEvent.ErrorCode)
 		assert.Contains(t, typedEvent.ErrorMessage, "ACP stdio protocol error")
 		assert.Contains(t, typedEvent.ErrorMessage, typedErr.Err.Error())
 
-		untypedEvent := acpStdioErrorSessionEvent(errors.New(fake.Lorem().Sentence(3)))
+		untypedEvent := ErrorSessionEvent(errors.New(fake.Lorem().Sentence(3)))
 		assert.Equal(t, "acp-stdio-execution", untypedEvent.ErrorCode)
 		assert.Contains(t, untypedEvent.ErrorMessage, "ACP stdio execution failed")
 	})
@@ -108,7 +108,7 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 	t.Run("nil result and content helpers fall back deterministically", func(t *testing.T) {
 		t.Parallel()
 
-		result := newACPStdioRunResult(fake.UUID().V4(), nil)
+		result := NewRunResult(fake.UUID().V4(), nil)
 		events := collectEvents(t, result)
 		require.Len(t, events, 1)
 		assert.Contains(t, events[0].ErrorMessage, "returned no result")
@@ -125,8 +125,8 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 
 		text1 := fake.Lorem().Sentence(2)
 		text2 := fake.Lorem().Sentence(2)
-		assert.Empty(t, messageContentText(nil))
-		assert.Equal(t, text1+"\n"+text2, messageContentText(&rt.MessageContent{
+		assert.Empty(t, MessageContentText(nil))
+		assert.Equal(t, text1+"\n"+text2, MessageContentText(&rt.MessageContent{
 			Parts: []rt.MessagePart{
 				{Text: "  " + text1 + "  "},
 				{Text: "\n" + text2 + "\t"},

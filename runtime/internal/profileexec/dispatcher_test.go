@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
+	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
@@ -64,12 +65,12 @@ func (e *testACPExecutor) Execute(
 }
 
 type testSessionRecorder struct {
-	record func(ctx context.Context, request RunRequest, events []*rt.SessionEvent) error
+	record func(ctx context.Context, request acpstdio.RunRequest, events []*rt.SessionEvent) error
 }
 
 func (r *testSessionRecorder) Record(
 	ctx context.Context,
-	request RunRequest,
+	request acpstdio.RunRequest,
 	events []*rt.SessionEvent,
 ) error {
 	return r.record(ctx, request, events)
@@ -108,8 +109,8 @@ func TestDispatcherRun(t *testing.T) {
 
 	fake := faker.New()
 
-	newRequest := func() RunRequest {
-		return RunRequest{
+	newRequest := func() acpstdio.RunRequest {
+		return acpstdio.RunRequest{
 			ProfileName: fake.Lorem().Word(),
 			UserID:      fake.Internet().User(),
 			SessionID:   fake.UUID().V4(),
@@ -132,7 +133,7 @@ func TestDispatcherRun(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		result, runErr := dispatcher.Run(t.Context(), RunRequest{})
+		result, runErr := dispatcher.Run(t.Context(), acpstdio.RunRequest{})
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
@@ -251,7 +252,7 @@ func TestDispatcherRun(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		result, runErr := dispatcher.Run(t.Context(), RunRequest{
+		result, runErr := dispatcher.Run(t.Context(), acpstdio.RunRequest{
 			ProfileName: request.ProfileName,
 			UserID:      request.UserID,
 			SessionID:   request.SessionID,
@@ -301,7 +302,7 @@ func TestDispatcherRun(t *testing.T) {
 				},
 			},
 			&testSessionRecorder{
-				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
+				record: func(context.Context, acpstdio.RunRequest, []*rt.SessionEvent) error {
 					return expectedErr
 				},
 			},
@@ -487,7 +488,7 @@ func TestDispatcherRun(t *testing.T) {
 		finalText := fake.Lorem().Sentence(4)
 		appName := "app-" + fake.Lorem().Word()
 		storage := sessions.NewMemorySessionsStorage()
-		recorder, err := NewSessionRecorder(appName, storage)
+		recorder, err := acpstdio.NewSessionRecorder(appName, storage)
 		require.NoError(t, err)
 
 		dispatcher, err := newDispatcherWithACPExecutor(
