@@ -254,19 +254,19 @@ func (s *AgentAPIServer) writeAgentRunError(
 	op string,
 	err error,
 ) {
-	var dispatchErr *profilerun.Error
-	if errors.As(err, &dispatchErr) {
-		switch dispatchErr.Kind {
+	var profileRunErr *profilerun.Error
+	if errors.As(err, &profileRunErr) {
+		switch profileRunErr.Kind {
 		case profilerun.ErrorKindValidation, profilerun.ErrorKindUnsupported:
-			s.logger.DebugContext(ctx, op+": profile dispatch", "err", err)
+			s.logger.DebugContext(ctx, op+": profile run", "err", err)
 			detail := "invalid profileName"
-			if dispatchErr.Err != nil {
-				detail = dispatchErr.Err.Error()
+			if profileRunErr.Err != nil {
+				detail = profileRunErr.Err.Error()
 			}
 			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", detail)
 			return
 		case profilerun.ErrorKindNotFound:
-			s.logger.DebugContext(ctx, op+": profile dispatch", "err", err)
+			s.logger.DebugContext(ctx, op+": profile run", "err", err)
 			writeProblemDetails(w, http.StatusNotFound, "Not Found", "agent profile not found")
 			return
 		case profilerun.ErrorKindExecution:

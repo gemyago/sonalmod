@@ -12,7 +12,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 ## 2. Neutral Profile Run Errors
 
 - [x] 2.1 Move generic profile run error kind/wrapper types out of `runtime/internal/profileexec` into a neutral internal runtime location usable by both `agent.Runner` and `internal/agentapi`.
-- [ ] 2.2 Update `AgentAPIServer.writeAgentRunError` and related tests to map the neutral profile run error type to the existing HTTP statuses without depending on `profileexec`.
+- [x] 2.2 Update `AgentAPIServer.writeAgentRunError` and related tests to map the neutral profile run error type to the existing HTTP statuses without depending on `profileexec`.
 
 ## 3. Runner-Owned Regular Profile Execution
 
