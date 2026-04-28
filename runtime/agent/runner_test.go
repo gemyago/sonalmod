@@ -10,6 +10,8 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
+	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
+	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -294,11 +296,12 @@ func TestRunner(t *testing.T) {
 			require.NotNil(t, result)
 		})
 
-		t.Run("profileName dispatches through runner-owned profile execution", func(t *testing.T) {
+		t.Run("profileName regular profile uses default model", func(t *testing.T) {
 			providerName := fake.Lorem().Word()
 			modelName := fake.Lorem().Word()
 			fqModel := providerName + "/" + modelName
 			profileName := "profile-" + fake.Lorem().Word()
+			profileInstructions := fake.Lorem().Sentence(4)
 
 			providersSvc := lp.NewMockProvidersConfigService(t)
 			providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
@@ -310,7 +313,7 @@ func TestRunner(t *testing.T) {
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return &ap.AgentProfile{
 						Name:         profileName,
-						Instructions: fake.Lorem().Sentence(4),
+						Instructions: profileInstructions,
 						ExecutionSettings: ap.ExecutionSettings{
 							DefaultModel: fqModel,
 						},
@@ -334,6 +337,294 @@ func TestRunner(t *testing.T) {
 			})
 			require.NoError(t, err)
 			require.NotNil(t, result)
+		})
+
+		t.Run("profileName request model overrides regular profile default model", func(t *testing.T) {
+			defaultProvider := fake.Lorem().Word()
+			defaultModel := fake.Lorem().Word()
+			defaultFQModel := defaultProvider + "/" + defaultModel
+			overrideProvider := fake.Lorem().Word()
+			overrideModel := fake.Lorem().Word()
+			overrideFQModel := overrideProvider + "/" + overrideModel
+			profileName := "profile-" + fake.Lorem().Word()
+			profileInstructions := fake.Lorem().Sentence(4)
+
+			providersSvc := lp.NewMockProvidersConfigService(t)
+			providersSvc.EXPECT().Get(mock.Anything, overrideProvider).Return(&lp.ProviderConfig{
+				Name:   overrideProvider,
+				APIKey: fake.Lorem().Word(),
+			}, nil)
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name:         profileName,
+						Instructions: profileInstructions,
+						ExecutionSettings: ap.ExecutionSettings{
+							DefaultModel: defaultFQModel,
+						},
+					}, nil
+				},
+			}
+
+			fakeG := internal.NewFakeGenkitInstance()
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   profilesSvc,
+				genkitInitFunc:         fakeG.InitFunc(),
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, err := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+				Model:       overrideFQModel,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+		})
+
+		t.Run("profileName missing profile returns not found error", func(t *testing.T) {
+			profileName := "profile-" + fake.Lorem().Word()
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return nil, ap.ErrAgentProfileNotFound
+				},
+			}
+
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   profilesSvc,
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, runErr := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+			})
+
+			require.Error(t, runErr)
+			assert.Nil(t, result)
+			var profileRunErr *profilerun.Error
+			require.ErrorAs(t, runErr, &profileRunErr)
+			assert.Equal(t, profilerun.ErrorKindNotFound, profileRunErr.Kind)
+			assert.ErrorIs(t, runErr, ap.ErrAgentProfileNotFound)
+		})
+
+		t.Run("profileName lookup failure returns execution error", func(t *testing.T) {
+			profileName := "profile-" + fake.Lorem().Word()
+			expectedErr := errors.New(fake.Lorem().Sentence(4))
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return nil, expectedErr
+				},
+			}
+
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   profilesSvc,
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, runErr := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+			})
+
+			require.Error(t, runErr)
+			assert.Nil(t, result)
+			var profileRunErr *profilerun.Error
+			require.ErrorAs(t, runErr, &profileRunErr)
+			assert.Equal(t, profilerun.ErrorKindExecution, profileRunErr.Kind)
+			require.ErrorIs(t, runErr, expectedErr)
+			assert.Contains(t, profileRunErr.Error(), "load-profile")
+		})
+
+		t.Run("profile-backed runner params include profile name and instructions", func(t *testing.T) {
+			r := &Runner{
+				runnerFactory: internal.NewAgentRunnerFactory(internal.AgentRunnerFactoryDeps{
+					LLMAdapterFactory: func(context.Context, string) (adkModel.LLM, error) {
+						return &fakeModel{}, nil
+					},
+					LLMAgentFactory:       llmagent.New,
+					LLMAgentRunnerFactory: internal.RunExecutorFactoryFromRunner,
+					SessionStorage:        sessions.NewMemorySessionsStorage(),
+					RootLogger:            rootTestLogger,
+				}),
+				toolsProvider: internal.StaticTools(nil),
+				rOpts:         &runnerOpts{},
+			}
+
+			modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
+			profileName := "profile-" + fake.Lorem().Word()
+			instructions := fake.Lorem().Sentence(5)
+
+			params := r.newAgentRunnerParams(modelName, profileName, instructions)
+
+			assert.Equal(t, defaultRunnerAppName, params.AppName)
+			assert.Equal(t, profileName, params.AgentName)
+			assert.Equal(t, modelName, params.ModelName)
+			require.Len(t, params.SystemPromptFragments, 1)
+			assert.Equal(t, SystemPromptFragment{
+				Section: "Profile Instructions",
+				Content: instructions,
+			}, params.SystemPromptFragments[0])
+		})
+
+		t.Run("profileName branch coverage", func(t *testing.T) {
+			t.Run("returns execution error when profiles service is nil", func(t *testing.T) {
+				r := &Runner{}
+				msg := &internal.MessageContent{
+					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
+				}
+				profileName := "profile-" + fake.Lorem().Word()
+
+				_, err := r.Run(t.Context(), RunParams{
+					UserID:      fake.UUID().V4(),
+					SessionID:   fake.UUID().V4(),
+					Message:     msg,
+					ProfileName: profileName,
+				})
+
+				require.Error(t, err)
+				var profileRunErr *profilerun.Error
+				require.ErrorAs(t, err, &profileRunErr)
+				assert.Equal(t, profilerun.ErrorKindExecution, profileRunErr.Kind)
+			})
+
+			t.Run("returns error when regular profile has no model", func(t *testing.T) {
+				profileName := "profile-" + fake.Lorem().Word()
+				msg := &internal.MessageContent{
+					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
+				}
+				r := &Runner{
+					profiles: &stubProfilesService{
+						get: func(context.Context, string) (*ap.AgentProfile, error) {
+							return &ap.AgentProfile{
+								Name:              profileName,
+								ExecutionSettings: ap.ExecutionSettings{},
+							}, nil
+						},
+					},
+				}
+
+				_, err := r.Run(t.Context(), RunParams{
+					UserID:      fake.UUID().V4(),
+					SessionID:   fake.UUID().V4(),
+					Message:     msg,
+					ProfileName: profileName,
+				})
+
+				require.Error(t, err)
+				require.ErrorContains(t, err, "model is required")
+			})
+
+			t.Run("returns execution error when ACP dispatcher is unavailable", func(t *testing.T) {
+				profileName := "profile-" + fake.Lorem().Word()
+				msg := &internal.MessageContent{
+					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
+				}
+				r := &Runner{
+					profiles: &stubProfilesService{
+						get: func(context.Context, string) (*ap.AgentProfile, error) {
+							return &ap.AgentProfile{
+								Name: profileName,
+								ExecutionSettings: ap.ExecutionSettings{
+									Mode: ap.ExecutionModeACPStdio,
+								},
+							}, nil
+						},
+					},
+				}
+
+				_, err := r.Run(t.Context(), RunParams{
+					UserID:      fake.UUID().V4(),
+					SessionID:   fake.UUID().V4(),
+					Message:     msg,
+					ProfileName: profileName,
+				})
+
+				require.Error(t, err)
+				var profileRunErr *profilerun.Error
+				require.ErrorAs(t, err, &profileRunErr)
+				assert.Equal(t, profilerun.ErrorKindExecution, profileRunErr.Kind)
+			})
+
+			t.Run("returns unsupported error for unknown execution mode", func(t *testing.T) {
+				profileName := "profile-" + fake.Lorem().Word()
+				msg := &internal.MessageContent{
+					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
+				}
+				r := &Runner{
+					profiles: &stubProfilesService{
+						get: func(context.Context, string) (*ap.AgentProfile, error) {
+							return &ap.AgentProfile{
+								Name: profileName,
+								ExecutionSettings: ap.ExecutionSettings{
+									Mode: ap.ExecutionMode("custom-backend"),
+								},
+							}, nil
+						},
+					},
+				}
+
+				_, err := r.Run(t.Context(), RunParams{
+					UserID:      fake.UUID().V4(),
+					SessionID:   fake.UUID().V4(),
+					Message:     msg,
+					ProfileName: profileName,
+				})
+
+				require.Error(t, err)
+				var profileRunErr *profilerun.Error
+				require.ErrorAs(t, err, &profileRunErr)
+				assert.Equal(t, profilerun.ErrorKindUnsupported, profileRunErr.Kind)
+			})
+
+			t.Run("regular runner adapter forwards instructions", func(t *testing.T) {
+				providerName := fake.Lorem().Word()
+				modelName := fake.Lorem().Word()
+				fqModel := providerName + "/" + modelName
+				instructions := fake.Lorem().Sentence(5)
+				agentName := "profile-" + fake.Lorem().Word()
+
+				providersSvc := lp.NewMockProvidersConfigService(t)
+				providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
+					Name:   providerName,
+					APIKey: fake.Lorem().Word(),
+				}, nil)
+
+				fakeG := internal.NewFakeGenkitInstance()
+				runner, err := NewRunner(RunnerArgs{
+					ProvidersConfigService: providersSvc,
+					AgentProfilesService:   newTestProfilesService(t),
+					genkitInitFunc:         fakeG.InitFunc(),
+				}, WithLogger(rootTestLogger))
+				require.NoError(t, err)
+
+				adapter := &runnerProfileRegularRunner{runner: runner}
+				msg := &internal.MessageContent{
+					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
+				}
+				result, err := adapter.RunRegularProfile(t.Context(), profileexec.RegularRunRequest{
+					UserID:              fake.UUID().V4(),
+					SessionID:           fake.UUID().V4(),
+					Message:             msg,
+					Model:               fqModel,
+					AgentName:           agentName,
+					ProfileInstructions: instructions,
+				})
+				require.NoError(t, err)
+				require.NotNil(t, result)
+			})
 		})
 
 		t.Run("tools registry path still resolves model and runs", func(t *testing.T) {

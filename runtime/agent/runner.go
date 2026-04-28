@@ -9,6 +9,7 @@ import (
 
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/gemyago/sonalmod/runtime/internal"
+	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
@@ -127,6 +128,7 @@ type Runner struct {
 	rOpts           *runnerOpts
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
+	profiles        AgentProfilesService
 	profileRuns     *profileexec.Dispatcher
 }
 
@@ -198,22 +200,15 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		rOpts:           rOpts,
 		sessionsStorage: ss,
 		modelsLocator:   modelsLocator,
+		profiles:        args.AgentProfilesService,
 	}
 
-	sessionRecorder, recorderErr := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
-	if recorderErr != nil {
-		return nil, fmt.Errorf("create profile run dispatcher: %w", recorderErr)
-	}
-
-	profileRuns, dispatchErr := profileexec.NewDispatcher(
+	sessionRecorder, _ := profileexec.NewSessionRecorder(defaultRunnerAppName, ss)
+	profileRuns, _ := profileexec.NewDispatcher(
 		args.AgentProfilesService,
 		&runnerProfileRegularRunner{runner: runner},
 		sessionRecorder,
 	)
-	if dispatchErr != nil {
-		return nil, fmt.Errorf("create profile run dispatcher: %w", dispatchErr)
-	}
-
 	runner.profileRuns = profileRuns
 
 	return runner, nil
@@ -269,27 +264,45 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 	profileName := strings.TrimSpace(params.ProfileName)
 	modelName := strings.TrimSpace(params.Model)
 	if profileName != "" {
-		if r.profileRuns == nil {
-			return nil, profilerun.WrapError(
-				profilerun.ErrorKindExecution,
-				"dispatch-profile",
-				errors.New("profile execution unavailable"),
-			)
-		}
-
-		return r.profileRuns.Run(ctx, profileexec.RunRequest{
-			ProfileName: profileName,
-			Model:       modelName,
-			UserID:      params.UserID,
-			SessionID:   params.SessionID,
-			Message:     params.Message,
-		})
+		return r.runProfileBackedExecution(ctx, params, profileName, modelName)
 	}
 
 	if modelName == "" {
 		return nil, errors.New("model is required")
 	}
 	return r.runBuiltInExecution(ctx, params)
+}
+
+func (r *Runner) loadProfile(
+	ctx context.Context,
+	profileName string,
+) (*ap.AgentProfile, error) {
+	if r.profiles == nil {
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindExecution,
+			"load-profile",
+			errors.New("profile execution unavailable"),
+		)
+	}
+
+	profile, err := r.profiles.Get(ctx, profileName)
+	if err != nil {
+		if errors.Is(err, ap.ErrAgentProfileNotFound) {
+			return nil, profilerun.WrapError(
+				profilerun.ErrorKindNotFound,
+				"load-profile",
+				fmt.Errorf("profile %q not found: %w", profileName, err),
+			)
+		}
+
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindExecution,
+			"load-profile",
+			fmt.Errorf("load profile %q: %w", profileName, err),
+		)
+	}
+
+	return profile, nil
 }
 
 func (r *Runner) runBuiltInExecution(ctx context.Context, params RunParams) (*RunResult, error) {
@@ -302,6 +315,87 @@ func (r *Runner) runBuiltInExecution(ctx context.Context, params RunParams) (*Ru
 	}
 
 	return ar.Run(ctx, params)
+}
+
+func (r *Runner) runProfileBackedExecution(
+	ctx context.Context,
+	params RunParams,
+	profileName string,
+	requestModel string,
+) (*RunResult, error) {
+	profile, err := r.loadProfile(ctx, profileName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch profile.ExecutionSettings.ModeOrDefault() {
+	case ap.ExecutionModeRegular:
+		resolvedModel := strings.TrimSpace(requestModel)
+		if resolvedModel == "" {
+			resolvedModel = strings.TrimSpace(profile.ExecutionSettings.DefaultModel)
+		}
+		if resolvedModel == "" {
+			return nil, errors.New("model is required")
+		}
+
+		return r.runProfileExecution(
+			ctx,
+			params,
+			resolvedModel,
+			profile.Name,
+			profile.Instructions,
+		)
+	case ap.ExecutionModeACPStdio:
+		if r.profileRuns == nil {
+			return nil, profilerun.WrapError(
+				profilerun.ErrorKindExecution,
+				"dispatch-profile",
+				errors.New("profile execution unavailable"),
+			)
+		}
+
+		return r.profileRuns.Run(ctx, profileexec.RunRequest{
+			ProfileName: profileName,
+			Profile:     profile,
+			Model:       requestModel,
+			UserID:      params.UserID,
+			SessionID:   params.SessionID,
+			Message:     params.Message,
+		})
+	default:
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindUnsupported,
+			"dispatch-profile",
+			fmt.Errorf(
+				"profile %q uses unsupported execution mode %q",
+				profile.Name,
+				profile.ExecutionSettings.Mode,
+			),
+		)
+	}
+}
+
+func (r *Runner) runProfileExecution(
+	ctx context.Context,
+	params RunParams,
+	modelName string,
+	agentName string,
+	profileInstructions string,
+) (*RunResult, error) {
+	ar, err := r.runnerFactory.NewAgentRunner(
+		ctx,
+		r.newAgentRunnerParams(modelName, agentName, profileInstructions),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return ar.Run(ctx, RunParams{
+		UserID:    params.UserID,
+		SessionID: params.SessionID,
+		Message:   params.Message,
+		Model:     modelName,
+	})
 }
 
 type runnerProfileRegularRunner struct {

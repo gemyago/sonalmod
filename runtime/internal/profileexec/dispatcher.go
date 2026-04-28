@@ -23,6 +23,7 @@ type acpExecutor interface {
 // RunRequest identifies the profile-backed run to execute.
 type RunRequest struct {
 	ProfileName string
+	Profile     *ap.AgentProfile
 	Model       string
 	UserID      string
 	SessionID   string
@@ -96,6 +97,30 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 		)
 	}
 
+	profile, err := d.loadProfile(ctx, profileName, request.Profile)
+	if err != nil {
+		return nil, err
+	}
+
+	switch profile.ExecutionSettings.ModeOrDefault() {
+	case ap.ExecutionModeRegular:
+		return d.runRegularProfile(ctx, request, profile)
+	case ap.ExecutionModeACPStdio:
+		return d.runACPProfile(ctx, request, profile)
+	default:
+		return nil, d.unsupportedProfileExecution(profile)
+	}
+}
+
+func (d *Dispatcher) loadProfile(
+	ctx context.Context,
+	profileName string,
+	resolvedProfile *ap.AgentProfile,
+) (*ap.AgentProfile, error) {
+	if resolvedProfile != nil {
+		return resolvedProfile, nil
+	}
+
 	profile, err := d.profiles.Get(ctx, profileName)
 	if err != nil {
 		if errors.Is(err, ap.ErrAgentProfileNotFound) {
@@ -113,68 +138,85 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 		)
 	}
 
-	switch profile.ExecutionSettings.ModeOrDefault() {
-	case ap.ExecutionModeRegular:
-		modelName := profile.ExecutionSettings.DefaultModel
-		if override := strings.TrimSpace(request.Model); override != "" {
-			modelName = override
-		}
+	return profile, nil
+}
 
-		result, runErr := d.regularRunner.RunRegularProfile(ctx, RegularRunRequest{
-			UserID:              request.UserID,
-			SessionID:           request.SessionID,
-			Message:             request.Message,
-			Model:               modelName,
-			AgentName:           profile.Name,
-			ProfileInstructions: profile.Instructions,
-		})
-		if runErr != nil {
-			return nil, profilerun.WrapError(
-				profilerun.ErrorKindExecution,
-				"run-regular-profile",
-				fmt.Errorf("run profile %q: %w", profile.Name, runErr),
-			)
-		}
+func (d *Dispatcher) runRegularProfile(
+	ctx context.Context,
+	request RunRequest,
+	profile *ap.AgentProfile,
+) (*rt.RunResult, error) {
+	modelName := profile.ExecutionSettings.DefaultModel
+	if override := strings.TrimSpace(request.Model); override != "" {
+		modelName = override
+	}
 
-		return result, nil
-	case ap.ExecutionModeACPStdio:
-		acpRequest, mapErr := codinglane.MapACPStdioExecutorRequest(
-			*profile,
-			messageContentText(request.Message),
+	result, runErr := d.regularRunner.RunRegularProfile(ctx, RegularRunRequest{
+		UserID:              request.UserID,
+		SessionID:           request.SessionID,
+		Message:             request.Message,
+		Model:               modelName,
+		AgentName:           profile.Name,
+		ProfileInstructions: profile.Instructions,
+	})
+	if runErr != nil {
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindExecution,
+			"run-regular-profile",
+			fmt.Errorf("run profile %q: %w", profile.Name, runErr),
 		)
-		if mapErr != nil {
-			return nil, profilerun.WrapError(
-				profilerun.ErrorKindExecution,
-				"map-acp-stdio-request",
-				fmt.Errorf("run profile %q: %w", profile.Name, mapErr),
-			)
-		}
+	}
 
-		acpResult, execErr := d.acpExecutor.Execute(ctx, acpRequest)
-		if execErr != nil {
-			events := []*rt.SessionEvent{acpStdioErrorSessionEvent(execErr)}
-			recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
-			if recordErr != nil {
-				return nil, recordErr
-			}
+	return result, nil
+}
 
-			return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
-		}
+func (d *Dispatcher) runACPProfile(
+	ctx context.Context,
+	request RunRequest,
+	profile *ap.AgentProfile,
+) (*rt.RunResult, error) {
+	acpRequest, mapErr := codinglane.MapACPStdioExecutorRequest(
+		*profile,
+		messageContentText(request.Message),
+	)
+	if mapErr != nil {
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindExecution,
+			"map-acp-stdio-request",
+			fmt.Errorf("run profile %q: %w", profile.Name, mapErr),
+		)
+	}
 
-		events := buildACPStdioSessionEvents(acpResult)
+	acpResult, execErr := d.acpExecutor.Execute(ctx, acpRequest)
+	if execErr != nil {
+		events := []*rt.SessionEvent{acpStdioErrorSessionEvent(execErr)}
 		recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
 		if recordErr != nil {
 			return nil, recordErr
 		}
 
 		return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
-	default:
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindUnsupported,
-			"dispatch-profile",
-			fmt.Errorf("profile %q uses unsupported execution mode %q", profile.Name, profile.ExecutionSettings.Mode),
-		)
 	}
+
+	events := buildACPStdioSessionEvents(acpResult)
+	recordErr := d.recordACPStdioEvents(ctx, profile.Name, request, events)
+	if recordErr != nil {
+		return nil, recordErr
+	}
+
+	return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
+}
+
+func (d *Dispatcher) unsupportedProfileExecution(profile *ap.AgentProfile) error {
+	return profilerun.WrapError(
+		profilerun.ErrorKindUnsupported,
+		"dispatch-profile",
+		fmt.Errorf(
+			"profile %q uses unsupported execution mode %q",
+			profile.Name,
+			profile.ExecutionSettings.Mode,
+		),
+	)
 }
 
 func (d *Dispatcher) recordACPStdioEvents(

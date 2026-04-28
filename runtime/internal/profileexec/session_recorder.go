@@ -28,7 +28,7 @@ type adkSessionRecorder struct {
 }
 
 // NewSessionRecorder creates a recorder backed by the runtime session service.
-func NewSessionRecorder(appName string, storage sessionService) (SessionRecorder, error) { //nolint:ireturn
+func NewSessionRecorder(appName string, storage sessionService) (SessionRecorder, error) {
 	if strings.TrimSpace(appName) == "" {
 		return nil, errors.New("app name is required")
 	}
