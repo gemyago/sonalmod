@@ -11,6 +11,7 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
+	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/gemyago/sonalmod/runtime/internal/summarize"
 	"google.golang.org/adk/agent/llmagent"
@@ -269,11 +270,11 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 	modelName := strings.TrimSpace(params.Model)
 	if profileName != "" {
 		if r.profileRuns == nil {
-			return nil, &profileexec.Error{
-				Kind: profileexec.ErrorKindExecution,
-				Op:   "dispatch-profile",
-				Err:  errors.New("profile execution unavailable"),
-			}
+			return nil, profilerun.WrapError(
+				profilerun.ErrorKindExecution,
+				"dispatch-profile",
+				errors.New("profile execution unavailable"),
+			)
 		}
 
 		return r.profileRuns.Run(ctx, profileexec.RunRequest{

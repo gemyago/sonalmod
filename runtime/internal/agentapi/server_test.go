@@ -22,7 +22,7 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	"github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
+	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -486,8 +486,8 @@ func TestAgentAPIServer(t *testing.T) {
 			profileName := "profile-" + fake.Lorem().Word()
 
 			m := agent.NewMockAgentRunner(t)
-			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profileexec.Error{
-				Kind: profileexec.ErrorKindNotFound,
+			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profilerun.Error{
+				Kind: profilerun.ErrorKindNotFound,
 				Op:   "load-profile",
 				Err:  ap.ErrAgentProfileNotFound,
 			})
@@ -1244,8 +1244,8 @@ func TestAgentAPIServer(t *testing.T) {
 			profileName := "profile-" + fake.Lorem().Word()
 
 			m := agent.NewMockAgentRunner(t)
-			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profileexec.Error{
-				Kind: profileexec.ErrorKindNotFound,
+			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profilerun.Error{
+				Kind: profilerun.ErrorKindNotFound,
 				Op:   "load-profile",
 				Err:  ap.ErrAgentProfileNotFound,
 			})
@@ -1363,8 +1363,8 @@ func TestAgentAPIServer(t *testing.T) {
 			profileName := "profile-" + fake.Lorem().Word()
 
 			m := agent.NewMockAgentRunner(t)
-			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profileexec.Error{
-				Kind: profileexec.ErrorKindUnsupported,
+			m.EXPECT().Run(mock.Anything, mock.Anything).Return(nil, &profilerun.Error{
+				Kind: profilerun.ErrorKindUnsupported,
 				Op:   "dispatch-profile",
 				Err:  errors.New("unsupported profile"),
 			})

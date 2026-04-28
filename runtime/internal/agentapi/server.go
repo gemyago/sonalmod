@@ -13,7 +13,7 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
+	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 )
 
 var _ agent.AgentRunner = (*rt.BackgroundRunner)(nil)
@@ -254,10 +254,10 @@ func (s *AgentAPIServer) writeAgentRunError(
 	op string,
 	err error,
 ) {
-	var dispatchErr *profileexec.Error
+	var dispatchErr *profilerun.Error
 	if errors.As(err, &dispatchErr) {
 		switch dispatchErr.Kind {
-		case profileexec.ErrorKindValidation, profileexec.ErrorKindUnsupported:
+		case profilerun.ErrorKindValidation, profilerun.ErrorKindUnsupported:
 			s.logger.DebugContext(ctx, op+": profile dispatch", "err", err)
 			detail := "invalid profileName"
 			if dispatchErr.Err != nil {
@@ -265,11 +265,11 @@ func (s *AgentAPIServer) writeAgentRunError(
 			}
 			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", detail)
 			return
-		case profileexec.ErrorKindNotFound:
+		case profilerun.ErrorKindNotFound:
 			s.logger.DebugContext(ctx, op+": profile dispatch", "err", err)
 			writeProblemDetails(w, http.StatusNotFound, "Not Found", "agent profile not found")
 			return
-		case profileexec.ErrorKindExecution:
+		case profilerun.ErrorKindExecution:
 			break
 		}
 	}

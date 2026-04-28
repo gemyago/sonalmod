@@ -9,6 +9,7 @@ import (
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
+	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 )
 
 type regularRunner interface {
@@ -17,35 +18,6 @@ type regularRunner interface {
 
 type acpExecutor interface {
 	Execute(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
-}
-
-// ErrorKind classifies profile execution dispatch failures.
-type ErrorKind string
-
-const (
-	// ErrorKindValidation indicates invalid dispatch input.
-	ErrorKindValidation ErrorKind = "validation"
-	// ErrorKindNotFound indicates the requested profile does not exist.
-	ErrorKindNotFound ErrorKind = "not-found"
-	// ErrorKindUnsupported indicates the selected execution mode is not wired yet.
-	ErrorKindUnsupported ErrorKind = "unsupported"
-	// ErrorKindExecution indicates a lower-level dependency failed during dispatch.
-	ErrorKindExecution ErrorKind = "execution"
-)
-
-// Error wraps dispatch failures with a stable kind and operation.
-type Error struct {
-	Kind ErrorKind
-	Op   string
-	Err  error
-}
-
-func (e *Error) Error() string {
-	return fmt.Sprintf("profile execution %s (%s): %v", e.Op, e.Kind, e.Err)
-}
-
-func (e *Error) Unwrap() error {
-	return e.Err
 }
 
 // RunRequest identifies the profile-backed run to execute.
@@ -117,21 +89,25 @@ func newDispatcherWithACPExecutor(
 func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult, error) {
 	profileName := strings.TrimSpace(request.ProfileName)
 	if profileName == "" {
-		return nil, wrapError(ErrorKindValidation, "validate-profile-name", errors.New("profile name is required"))
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindValidation,
+			"validate-profile-name",
+			errors.New("profile name is required"),
+		)
 	}
 
 	profile, err := d.profiles.Get(ctx, profileName)
 	if err != nil {
 		if errors.Is(err, ap.ErrAgentProfileNotFound) {
-			return nil, wrapError(
-				ErrorKindNotFound,
+			return nil, profilerun.WrapError(
+				profilerun.ErrorKindNotFound,
 				"load-profile",
 				fmt.Errorf("profile %q not found: %w", profileName, err),
 			)
 		}
 
-		return nil, wrapError(
-			ErrorKindExecution,
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindExecution,
 			"load-profile",
 			fmt.Errorf("load profile %q: %w", profileName, err),
 		)
@@ -153,8 +129,8 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 			ProfileInstructions: profile.Instructions,
 		})
 		if runErr != nil {
-			return nil, wrapError(
-				ErrorKindExecution,
+			return nil, profilerun.WrapError(
+				profilerun.ErrorKindExecution,
 				"run-regular-profile",
 				fmt.Errorf("run profile %q: %w", profile.Name, runErr),
 			)
@@ -167,8 +143,8 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 			messageContentText(request.Message),
 		)
 		if mapErr != nil {
-			return nil, wrapError(
-				ErrorKindExecution,
+			return nil, profilerun.WrapError(
+				profilerun.ErrorKindExecution,
 				"map-acp-stdio-request",
 				fmt.Errorf("run profile %q: %w", profile.Name, mapErr),
 			)
@@ -193,8 +169,8 @@ func (d *Dispatcher) Run(ctx context.Context, request RunRequest) (*rt.RunResult
 
 		return rt.NewRunResult(sessionEventSeq(events), request.SessionID), nil
 	default:
-		return nil, wrapError(
-			ErrorKindUnsupported,
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindUnsupported,
 			"dispatch-profile",
 			fmt.Errorf("profile %q uses unsupported execution mode %q", profile.Name, profile.ExecutionSettings.Mode),
 		)
@@ -212,24 +188,12 @@ func (d *Dispatcher) recordACPStdioEvents(
 	}
 
 	if err := d.sessionRecorder.Record(ctx, request, events); err != nil {
-		return wrapError(
-			ErrorKindExecution,
+		return profilerun.WrapError(
+			profilerun.ErrorKindExecution,
 			"record-acp-stdio-session",
 			fmt.Errorf("run profile %q: %w", profileName, err),
 		)
 	}
 
 	return nil
-}
-
-func wrapError(kind ErrorKind, op string, err error) error {
-	if err == nil {
-		return nil
-	}
-
-	return &Error{
-		Kind: kind,
-		Op:   op,
-		Err:  err,
-	}
 }

@@ -9,6 +9,7 @@ import (
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
+	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -263,9 +264,9 @@ func TestDispatcherRun(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var dispatchErr *Error
+		var dispatchErr *profilerun.Error
 		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, ErrorKindValidation, dispatchErr.Kind)
+		assert.Equal(t, profilerun.ErrorKindValidation, dispatchErr.Kind)
 	})
 
 	t.Run("unknown profile returns not found error", func(t *testing.T) {
@@ -292,9 +293,9 @@ func TestDispatcherRun(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var dispatchErr *Error
+		var dispatchErr *profilerun.Error
 		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, ErrorKindNotFound, dispatchErr.Kind)
+		assert.Equal(t, profilerun.ErrorKindNotFound, dispatchErr.Kind)
 		assert.ErrorIs(t, runErr, ap.ErrAgentProfileNotFound)
 	})
 
@@ -323,9 +324,9 @@ func TestDispatcherRun(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var dispatchErr *Error
+		var dispatchErr *profilerun.Error
 		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, ErrorKindExecution, dispatchErr.Kind)
+		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
 		require.ErrorIs(t, runErr, expectedErr)
 		assert.Contains(t, dispatchErr.Error(), "load-profile")
 	})
@@ -499,9 +500,9 @@ func TestDispatcherRun(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var dispatchErr *Error
+		var dispatchErr *profilerun.Error
 		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, ErrorKindUnsupported, dispatchErr.Kind)
+		assert.Equal(t, profilerun.ErrorKindUnsupported, dispatchErr.Kind)
 		assert.Contains(t, dispatchErr.Error(), "dispatch-profile")
 	})
 
@@ -536,9 +537,9 @@ func TestDispatcherRun(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var dispatchErr *Error
+		var dispatchErr *profilerun.Error
 		require.ErrorAs(t, runErr, &dispatchErr)
-		assert.Equal(t, ErrorKindExecution, dispatchErr.Kind)
+		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
 		assert.ErrorIs(t, runErr, expectedErr)
 	})
 
@@ -652,7 +653,7 @@ func TestWrapError(t *testing.T) {
 	t.Run("returns nil when error is nil", func(t *testing.T) {
 		t.Parallel()
 
-		assert.NoError(t, wrapError(ErrorKindExecution, "noop", nil))
+		assert.NoError(t, profilerun.WrapError(profilerun.ErrorKindExecution, "noop", nil))
 	})
 
 	t.Run("wraps kind operation and original error", func(t *testing.T) {
@@ -660,11 +661,11 @@ func TestWrapError(t *testing.T) {
 
 		expectedErr := errors.New("boom")
 
-		err := wrapError(ErrorKindExecution, "run", expectedErr)
+		err := profilerun.WrapError(profilerun.ErrorKindExecution, "run", expectedErr)
 
-		var dispatchErr *Error
+		var dispatchErr *profilerun.Error
 		require.ErrorAs(t, err, &dispatchErr)
-		assert.Equal(t, ErrorKindExecution, dispatchErr.Kind)
+		assert.Equal(t, profilerun.ErrorKindExecution, dispatchErr.Kind)
 		assert.Equal(t, "run", dispatchErr.Op)
 		require.ErrorIs(t, err, expectedErr)
 		assert.Contains(t, err.Error(), "profile execution run (execution)")
