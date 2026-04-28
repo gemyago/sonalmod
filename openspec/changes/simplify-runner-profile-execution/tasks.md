@@ -7,7 +7,7 @@ Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instr
 ## 1. Required Runner Dependencies
 
 - [x] 1.1 Update `agent.NewRunner` so `RunnerArgs.AgentProfilesService` is required, add constructor validation tests, and update all runtime/app/test `NewRunner` call sites with a valid profiles-service stub or real service.
-- [ ] 1.2 Update `runtime/AGENTS.md` public contract text so `RunnerArgs.AgentProfilesService` is documented as required instead of optional.
+- [x] 1.2 Update `runtime/AGENTS.md` public contract text so `RunnerArgs.AgentProfilesService` is documented as required instead of optional.
 
 ## 2. Neutral Profile Run Errors
 
