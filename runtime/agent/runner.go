@@ -12,7 +12,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profileexec"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/gemyago/sonalmod/runtime/internal/summarize"
@@ -130,7 +129,7 @@ type Runner struct {
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
 	profiles        AgentProfilesService
-	profileRuns     *profileexec.Dispatcher
+	acpProfileRun   *acpstdio.ACPProfileRunner
 }
 
 func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
@@ -204,9 +203,15 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		profiles:        args.AgentProfilesService,
 	}
 
-	sessionRecorder, _ := acpstdio.NewSessionRecorder(defaultRunnerAppName, ss)
-	profileRuns, _ := profileexec.NewDispatcher(args.AgentProfilesService, sessionRecorder)
-	runner.profileRuns = profileRuns
+	sessionRecorder, err := acpstdio.NewSessionRecorder(defaultRunnerAppName, ss)
+	if err != nil {
+		return nil, fmt.Errorf("session recorder: %w", err)
+	}
+	acpProfileRun, err := acpstdio.NewACPProfileRunner(sessionRecorder)
+	if err != nil {
+		return nil, fmt.Errorf("ACP profile runner: %w", err)
+	}
+	runner.acpProfileRun = acpProfileRun
 
 	return runner, nil
 }
@@ -343,22 +348,7 @@ func (r *Runner) runProfileBackedExecution(
 			profile.Instructions,
 		)
 	case ap.ExecutionModeACPStdio:
-		if r.profileRuns == nil {
-			return nil, profilerun.WrapError(
-				profilerun.ErrorKindExecution,
-				"dispatch-profile",
-				errors.New("profile execution unavailable"),
-			)
-		}
-
-		return r.profileRuns.Run(ctx, acpstdio.RunRequest{
-			ProfileName: profileName,
-			Profile:     profile,
-			Model:       requestModel,
-			UserID:      params.UserID,
-			SessionID:   params.SessionID,
-			Message:     params.Message,
-		})
+		return r.runACPProfileExecution(ctx, params, profile, requestModel)
 	default:
 		return nil, profilerun.WrapError(
 			profilerun.ErrorKindUnsupported,
@@ -370,6 +360,30 @@ func (r *Runner) runProfileBackedExecution(
 			),
 		)
 	}
+}
+
+func (r *Runner) runACPProfileExecution(
+	ctx context.Context,
+	params RunParams,
+	profile *ap.AgentProfile,
+	requestModel string,
+) (*RunResult, error) {
+	if r.acpProfileRun == nil {
+		return nil, profilerun.WrapError(
+			profilerun.ErrorKindExecution,
+			"run-acp-profile",
+			errors.New("ACP profile runner unavailable"),
+		)
+	}
+
+	return r.acpProfileRun.Run(ctx, acpstdio.RunRequest{
+		ProfileName: profile.Name,
+		Profile:     profile,
+		Model:       requestModel,
+		UserID:      params.UserID,
+		SessionID:   params.SessionID,
+		Message:     params.Message,
+	})
 }
 
 func (r *Runner) runProfileExecution(
