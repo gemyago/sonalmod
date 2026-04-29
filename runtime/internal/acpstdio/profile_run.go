@@ -22,20 +22,41 @@ type ACPProfileRunner struct {
 	recorder SessionRecorder
 }
 
+// NewACPProfileRunnerParams configures the default ACP profile runner construction.
+type NewACPProfileRunnerParams struct {
+	AppName        string
+	SessionStorage sessionService
+}
+
+// NewACPProfileRunnerWithExecutorParams configures ACP profile runner construction
+// when an executor and/or recorder is provided by the caller.
+type NewACPProfileRunnerWithExecutorParams struct {
+	Executor Executor
+	Recorder SessionRecorder
+}
+
 // NewACPProfileRunner creates a runner backed by the default ACP stdio executor.
-func NewACPProfileRunner(recorder SessionRecorder) (*ACPProfileRunner, error) {
-	return NewACPProfileRunnerWithExecutor(codinglane.NewACPStdioExecutor(), recorder)
+func NewACPProfileRunner(params NewACPProfileRunnerParams) (*ACPProfileRunner, error) {
+	recorder, err := NewSessionRecorder(params.AppName, params.SessionStorage)
+	if err != nil {
+		return nil, fmt.Errorf("session recorder: %w", err)
+	}
+
+	return NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+		Executor: codinglane.NewACPStdioExecutor(),
+		Recorder: recorder,
+	})
 }
 
 // NewACPProfileRunnerWithExecutor creates a runner with an injected executor.
-func NewACPProfileRunnerWithExecutor(executor Executor, recorder SessionRecorder) (*ACPProfileRunner, error) {
-	if executor == nil {
+func NewACPProfileRunnerWithExecutor(params NewACPProfileRunnerWithExecutorParams) (*ACPProfileRunner, error) {
+	if params.Executor == nil {
 		return nil, errors.New("ACP stdio executor is required")
 	}
 
 	return &ACPProfileRunner{
-		executor: executor,
-		recorder: recorder,
+		executor: params.Executor,
+		recorder: params.Recorder,
 	}, nil
 }
 

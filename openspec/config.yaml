@@ -35,11 +35,4 @@ schema: spec-driven
 rules:
   tasks:
     - |
-      Inject the following instruction into the heading of the tasks. Note: it must follow before tasks list and must be it's own heading instruction:
-      ```markdown
-      ## Important Apply Phase Constraint
-      Applying phase must follow [orchestrate-tasks](../../orchestrate-tasks.md) instruction.
-      ---
-      ```
-    - |
-      When breaking down the design on tasks: each task must be self contained and must leave the codebase in a "green state". This means that gradual refactoring techniques must be followed if breaking changes are introduced.
+      When breaking down the design on tasks: each task must be self contained and must leave the codebase in a "green state". This means that gradual refactoring techniques must be followed if breaking changes are introduced

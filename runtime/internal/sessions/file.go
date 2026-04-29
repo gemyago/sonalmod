@@ -342,6 +342,7 @@ func (s *fileSession) UserID() string {
 	return s.userID
 }
 
+//nolint:ireturn // ADK session contract requires interface return types.
 func (s *fileSession) State() session.State {
 	return &fileSessionState{
 		mu:    &s.mu,
@@ -349,6 +350,7 @@ func (s *fileSession) State() session.State {
 	}
 }
 
+//nolint:ireturn // ADK session contract requires interface return types.
 func (s *fileSession) Events() session.Events {
 	return fileSessionEvents(s.events)
 }

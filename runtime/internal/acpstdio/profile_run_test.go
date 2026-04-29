@@ -10,6 +10,7 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
+	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,7 +73,7 @@ func TestACPProfileRunner(t *testing.T) {
 	t.Run("requires executor", func(t *testing.T) {
 		t.Parallel()
 
-		runner, err := NewACPProfileRunnerWithExecutor(nil, nil)
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{})
 
 		require.Error(t, err)
 		assert.Nil(t, runner)
@@ -82,7 +83,10 @@ func TestACPProfileRunner(t *testing.T) {
 	t.Run("constructs with the default executor", func(t *testing.T) {
 		t.Parallel()
 
-		runner, err := NewACPProfileRunner(nil)
+		runner, err := NewACPProfileRunner(NewACPProfileRunnerParams{
+			AppName:        fake.Lorem().Word(),
+			SessionStorage: sessions.NewMemorySessionsStorage(),
+		})
 
 		require.NoError(t, err)
 		require.NotNil(t, runner)
@@ -107,8 +111,8 @@ func TestACPProfileRunner(t *testing.T) {
 		var recordedRequest RunRequest
 		var recordedEvents []*rt.SessionEvent
 
-		runner, err := NewACPProfileRunnerWithExecutor(
-			&profileRunnerExecutorStub{
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+			Executor: &profileRunnerExecutorStub{
 				execute: func(_ context.Context, req codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					assert.Equal(t, profile.ExecutionSettings, req.ExecutionSettings)
 					assert.Contains(t, req.Prompt, messageText)
@@ -132,14 +136,14 @@ func TestACPProfileRunner(t *testing.T) {
 					}, nil
 				},
 			},
-			&profileRunnerRecorderStub{
+			Recorder: &profileRunnerRecorderStub{
 				record: func(_ context.Context, req RunRequest, events []*rt.SessionEvent) error {
 					recordedRequest = req
 					recordedEvents = append(recordedEvents, events...)
 					return nil
 				},
 			},
-		)
+		})
 		require.NoError(t, err)
 
 		result, runErr := runner.Run(t.Context(), request)
@@ -164,18 +168,18 @@ func TestACPProfileRunner(t *testing.T) {
 		profile := newProfile()
 		expectedErr := errors.New(fake.Lorem().Sentence(4))
 
-		runner, err := NewACPProfileRunnerWithExecutor(
-			&profileRunnerExecutorStub{
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+			Executor: &profileRunnerExecutorStub{
 				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					return nil, expectedErr
 				},
 			},
-			&profileRunnerRecorderStub{
+			Recorder: &profileRunnerRecorderStub{
 				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
 					return nil
 				},
 			},
-		)
+		})
 		require.NoError(t, err)
 
 		result, runErr := runner.Run(t.Context(), RunRequest{
@@ -204,18 +208,18 @@ func TestACPProfileRunner(t *testing.T) {
 		profile := newProfile()
 		expectedErr := errors.New(fake.Lorem().Sentence(4))
 
-		runner, err := NewACPProfileRunnerWithExecutor(
-			&profileRunnerExecutorStub{
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+			Executor: &profileRunnerExecutorStub{
 				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					return nil, errors.New(fake.Lorem().Sentence(4))
 				},
 			},
-			&profileRunnerRecorderStub{
+			Recorder: &profileRunnerRecorderStub{
 				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
 					return expectedErr
 				},
 			},
-		)
+		})
 		require.NoError(t, err)
 
 		result, runErr := runner.Run(t.Context(), RunRequest{
@@ -243,8 +247,8 @@ func TestACPProfileRunner(t *testing.T) {
 		profile := newProfile()
 		expectedErr := errors.New(fake.Lorem().Sentence(4))
 
-		runner, err := NewACPProfileRunnerWithExecutor(
-			&profileRunnerExecutorStub{
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+			Executor: &profileRunnerExecutorStub{
 				execute: func(_ context.Context, _ codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					return &codinglane.ACPStdioExecutorResult{
 						Updates: []codinglane.ACPStdioUpdate{{
@@ -256,12 +260,12 @@ func TestACPProfileRunner(t *testing.T) {
 					}, nil
 				},
 			},
-			&profileRunnerRecorderStub{
+			Recorder: &profileRunnerRecorderStub{
 				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
 					return expectedErr
 				},
 			},
-		)
+		})
 		require.NoError(t, err)
 
 		result, runErr := runner.Run(t.Context(), RunRequest{
@@ -286,14 +290,13 @@ func TestACPProfileRunner(t *testing.T) {
 	t.Run("rejects missing profile", func(t *testing.T) {
 		t.Parallel()
 
-		runner, err := NewACPProfileRunnerWithExecutor(
-			&profileRunnerExecutorStub{
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+			Executor: &profileRunnerExecutorStub{
 				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					panic("Execute should not be called")
 				},
 			},
-			nil,
-		)
+		})
 		require.NoError(t, err)
 
 		result, runErr := runner.Run(t.Context(), RunRequest{})
@@ -310,14 +313,13 @@ func TestACPProfileRunner(t *testing.T) {
 		t.Parallel()
 
 		requestProfileName := fake.Lorem().Word()
-		runner, err := NewACPProfileRunnerWithExecutor(
-			&profileRunnerExecutorStub{
+		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
+			Executor: &profileRunnerExecutorStub{
 				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
 					panic("Execute should not be called")
 				},
 			},
-			nil,
-		)
+		})
 		require.NoError(t, err)
 
 		result, runErr := runner.Run(t.Context(), RunRequest{

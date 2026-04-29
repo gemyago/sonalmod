@@ -203,11 +203,10 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		profiles:        args.AgentProfilesService,
 	}
 
-	sessionRecorder, err := acpstdio.NewSessionRecorder(defaultRunnerAppName, ss)
-	if err != nil {
-		return nil, fmt.Errorf("session recorder: %w", err)
-	}
-	acpProfileRun, err := acpstdio.NewACPProfileRunner(sessionRecorder)
+	acpProfileRun, err := acpstdio.NewACPProfileRunner(acpstdio.NewACPProfileRunnerParams{
+		AppName:        defaultRunnerAppName,
+		SessionStorage: ss,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("ACP profile runner: %w", err)
 	}

@@ -564,18 +564,19 @@ func TestRunner(t *testing.T) {
 				require.NoError(t, err)
 
 				acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-					&acpExecutorStub{
-						execute: func(_ context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-							capturedRequest = request
-							return &codinglane.ACPStdioExecutorResult{
-								Updates: []codinglane.ACPStdioUpdate{{
-									Type:    "final",
-									Payload: json.RawMessage(payload),
-								}},
-							}, nil
+					acpstdio.NewACPProfileRunnerWithExecutorParams{
+						Executor: &acpExecutorStub{
+							execute: func(_ context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+								capturedRequest = request
+								return &codinglane.ACPStdioExecutorResult{
+									Updates: []codinglane.ACPStdioUpdate{{
+										Type:    "final",
+										Payload: json.RawMessage(payload),
+									}},
+								}, nil
+							},
 						},
 					},
-					nil,
 				)
 				require.NoError(t, err)
 				runner.acpProfileRun = acpRunner
@@ -628,12 +629,13 @@ func TestRunner(t *testing.T) {
 				require.NoError(t, err)
 
 				acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-					&acpExecutorStub{
-						execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-							return nil, expectedErr
+					acpstdio.NewACPProfileRunnerWithExecutorParams{
+						Executor: &acpExecutorStub{
+							execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+								return nil, expectedErr
+							},
 						},
 					},
-					nil,
 				)
 				require.NoError(t, err)
 				runner.acpProfileRun = acpRunner
@@ -685,19 +687,20 @@ func TestRunner(t *testing.T) {
 				require.NoError(t, err)
 
 				acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-					&acpExecutorStub{
-						execute: func(_ context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-							assert.Equal(t, ap.ExecutionModeACPStdio, request.ExecutionSettings.ModeOrDefault())
-							assert.Contains(t, request.Prompt, messageText)
-							return &codinglane.ACPStdioExecutorResult{
-								Updates: []codinglane.ACPStdioUpdate{{
-									Type:    "final",
-									Payload: json.RawMessage(`{"message":"ok"}`),
-								}},
-							}, nil
+					acpstdio.NewACPProfileRunnerWithExecutorParams{
+						Executor: &acpExecutorStub{
+							execute: func(_ context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+								assert.Equal(t, ap.ExecutionModeACPStdio, request.ExecutionSettings.ModeOrDefault())
+								assert.Contains(t, request.Prompt, messageText)
+								return &codinglane.ACPStdioExecutorResult{
+									Updates: []codinglane.ACPStdioUpdate{{
+										Type:    "final",
+										Payload: json.RawMessage(`{"message":"ok"}`),
+									}},
+								}, nil
+							},
 						},
 					},
-					nil,
 				)
 				require.NoError(t, err)
 				runner.acpProfileRun = acpRunner
