@@ -90,9 +90,9 @@ The system SHALL dispatch standard agent runs according to the optional `profile
 - **WHEN** a standard run selects a profile whose execution mode is omitted or `regular` and includes request-level `model`
 - **THEN** the system executes the run through the built-in agent runner using the request-level `model`
 
-#### Scenario: ACP stdio profile uses internal ACP executor
+#### Scenario: ACP stdio profile uses ACP-specific profile runner
 - **WHEN** a standard run selects a profile whose execution mode is `acp-stdio`
-- **THEN** the system launches the configured ACP command through an internal executor and streams the result through the standard SSE run contract
+- **THEN** the system executes the run through an internal ACP-specific profile runner that launches the configured ACP command and owns ACP session recorder initialization
 
 #### Scenario: ACP stdio model override is ignored
 - **WHEN** a standard run selects a profile whose execution mode is `acp-stdio` and also includes request-level `model`
