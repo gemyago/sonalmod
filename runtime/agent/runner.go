@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/gemyago/sonalmod/runtime/internal"
 	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
-	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
@@ -124,12 +122,9 @@ func WithSystemPromptFragments(fragments ...SystemPromptFragment) RunnerOpt {
 
 type Runner struct {
 	runnerFactory   *internal.AgentRunnerFactory
-	toolsProvider   internal.ToolsProvider
-	rOpts           *runnerOpts
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
-	profiles        AgentProfilesService
-	acpProfileRun   *acpstdio.ACPProfileRunner
+	executionRunner *profilerun.ExecutionRunner
 }
 
 func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
@@ -194,15 +189,6 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		RootLogger:            rOpts.logger,
 	})
 
-	runner := &Runner{
-		runnerFactory:   runnerFactory,
-		toolsProvider:   toolsProvider,
-		rOpts:           rOpts,
-		sessionsStorage: ss,
-		modelsLocator:   modelsLocator,
-		profiles:        args.AgentProfilesService,
-	}
-
 	acpProfileRun, err := acpstdio.NewACPProfileRunner(acpstdio.NewACPProfileRunnerParams{
 		AppName:        defaultRunnerAppName,
 		SessionStorage: ss,
@@ -210,7 +196,26 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 	if err != nil {
 		return nil, fmt.Errorf("ACP profile runner: %w", err)
 	}
-	runner.acpProfileRun = acpProfileRun
+
+	runner := &Runner{
+		runnerFactory:   runnerFactory,
+		sessionsStorage: ss,
+		modelsLocator:   modelsLocator,
+		executionRunner: profilerun.NewExecutionRunner(profilerun.ExecutionRunnerParams{
+			NewAgentRunner: func(
+				ctx context.Context,
+				params internal.NewAgentRunnerParams,
+			) (profilerun.AgentRunner, error) {
+				return runnerFactory.NewAgentRunner(ctx, params)
+			},
+			ToolsProvider:         toolsProvider,
+			ProfilesService:       args.AgentProfilesService,
+			ACPProfileExecutor:    acpProfileExecutorAdapter{runner: acpProfileRun},
+			AppName:               defaultRunnerAppName,
+			DefaultAgentName:      defaultRunnerAgentName,
+			SystemPromptFragments: rOpts.systemPromptFragments,
+		}),
+	}
 
 	return runner, nil
 }
@@ -219,31 +224,6 @@ const (
 	defaultRunnerAppName   = "sonalmod-runtime"
 	defaultRunnerAgentName = "sonalmod"
 )
-
-func (r *Runner) newAgentRunnerParams(
-	modelName string,
-	agentName string,
-	profileInstructions string,
-) internal.NewAgentRunnerParams {
-	systemPromptFragments := append(
-		[]SystemPromptFragment(nil),
-		r.rOpts.systemPromptFragments...,
-	)
-	if strings.TrimSpace(profileInstructions) != "" {
-		systemPromptFragments = append(systemPromptFragments, SystemPromptFragment{
-			Section: "Profile Instructions",
-			Content: profileInstructions,
-		})
-	}
-
-	return internal.NewAgentRunnerParams{
-		AppName:               defaultRunnerAppName,
-		AgentName:             agentName,
-		SystemPromptFragments: systemPromptFragments,
-		ToolsRegistry:         r.toolsProvider,
-		ModelName:             modelName,
-	}
-}
 
 // AutoMigrate runs schema migrations for database-backed session storage when configured.
 // It is a no-op when file or in-memory storage is in use.
@@ -262,112 +242,22 @@ func (r *Runner) ModelsLocator() ModelsLister { //nolint:ireturn
 }
 
 func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
-	profileName := strings.TrimSpace(params.ProfileName)
-	modelName := strings.TrimSpace(params.Model)
-	if profileName != "" {
-		return r.runProfileBackedExecution(ctx, params, profileName, modelName)
+	if r.executionRunner == nil {
+		return nil, errors.New("execution runner is required")
 	}
 
-	if modelName == "" {
-		return nil, errors.New("model is required")
-	}
-	return r.runBuiltInExecution(ctx, params)
+	return r.executionRunner.Run(ctx, params)
 }
 
-func (r *Runner) loadProfile(
+type acpProfileExecutorAdapter struct {
+	runner *acpstdio.ACPProfileRunner
+}
+
+func (a acpProfileExecutorAdapter) RunACPProfile(
 	ctx context.Context,
-	profileName string,
-) (*ap.AgentProfile, error) {
-	if r.profiles == nil {
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindExecution,
-			"load-profile",
-			errors.New("profile execution unavailable"),
-		)
-	}
-
-	profile, err := r.profiles.Get(ctx, profileName)
-	if err != nil {
-		if errors.Is(err, ap.ErrAgentProfileNotFound) {
-			return nil, profilerun.WrapError(
-				profilerun.ErrorKindNotFound,
-				"load-profile",
-				fmt.Errorf("profile %q not found: %w", profileName, err),
-			)
-		}
-
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindExecution,
-			"load-profile",
-			fmt.Errorf("load profile %q: %w", profileName, err),
-		)
-	}
-
-	return profile, nil
-}
-
-func (r *Runner) runBuiltInExecution(ctx context.Context, params RunParams) (*RunResult, error) {
-	ar, err := r.runnerFactory.NewAgentRunner(
-		ctx,
-		r.newAgentRunnerParams(params.Model, defaultRunnerAgentName, ""),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return ar.Run(ctx, params)
-}
-
-func (r *Runner) runProfileBackedExecution(
-	ctx context.Context,
-	params RunParams,
-	profileName string,
-	requestModel string,
-) (*RunResult, error) {
-	profile, err := r.loadProfile(ctx, profileName)
-	if err != nil {
-		return nil, err
-	}
-
-	switch profile.ExecutionSettings.ModeOrDefault() {
-	case ap.ExecutionModeRegular:
-		resolvedModel := strings.TrimSpace(requestModel)
-		if resolvedModel == "" {
-			resolvedModel = strings.TrimSpace(profile.ExecutionSettings.DefaultModel)
-		}
-		if resolvedModel == "" {
-			return nil, errors.New("model is required")
-		}
-
-		return r.runProfileExecution(
-			ctx,
-			params,
-			resolvedModel,
-			profile.Name,
-			profile.Instructions,
-		)
-	case ap.ExecutionModeACPStdio:
-		return r.runACPProfileExecution(ctx, params, profile, requestModel)
-	default:
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindUnsupported,
-			"dispatch-profile",
-			fmt.Errorf(
-				"profile %q uses unsupported execution mode %q",
-				profile.Name,
-				profile.ExecutionSettings.Mode,
-			),
-		)
-	}
-}
-
-func (r *Runner) runACPProfileExecution(
-	ctx context.Context,
-	params RunParams,
-	profile *ap.AgentProfile,
-	requestModel string,
-) (*RunResult, error) {
-	if r.acpProfileRun == nil {
+	request profilerun.ACPRunRequest,
+) (*internal.RunResult, error) {
+	if a.runner == nil {
 		return nil, profilerun.WrapError(
 			profilerun.ErrorKindExecution,
 			"run-acp-profile",
@@ -375,36 +265,13 @@ func (r *Runner) runACPProfileExecution(
 		)
 	}
 
-	return r.acpProfileRun.Run(ctx, acpstdio.RunRequest{
-		ProfileName: profile.Name,
-		Profile:     profile,
-		Model:       requestModel,
-		UserID:      params.UserID,
-		SessionID:   params.SessionID,
-		Message:     params.Message,
-	})
-}
-
-func (r *Runner) runProfileExecution(
-	ctx context.Context,
-	params RunParams,
-	modelName string,
-	agentName string,
-	profileInstructions string,
-) (*RunResult, error) {
-	ar, err := r.runnerFactory.NewAgentRunner(
-		ctx,
-		r.newAgentRunnerParams(modelName, agentName, profileInstructions),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return ar.Run(ctx, RunParams{
-		UserID:    params.UserID,
-		SessionID: params.SessionID,
-		Message:   params.Message,
-		Model:     modelName,
+	return a.runner.Run(ctx, acpstdio.RunRequest{
+		ProfileName: request.ProfileName,
+		Profile:     request.Profile,
+		Model:       request.Model,
+		UserID:      request.UserID,
+		SessionID:   request.SessionID,
+		Message:     request.Message,
 	})
 }
 

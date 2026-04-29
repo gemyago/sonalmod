@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"iter"
 	"testing"
@@ -187,6 +186,14 @@ func TestRunner(t *testing.T) {
 	})
 
 	t.Run("Run", func(t *testing.T) {
+		t.Run("returns error when execution runner is missing", func(t *testing.T) {
+			r := &Runner{}
+			result, err := r.Run(t.Context(), RunParams{})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.EqualError(t, err, "execution runner is required")
+		})
+
 		t.Run("empty sessionID returns error", func(t *testing.T) {
 			prov := fake.Lorem().Word()
 			mod := fake.Lorem().Word()
@@ -229,8 +236,21 @@ func TestRunner(t *testing.T) {
 			})
 			r := &Runner{
 				runnerFactory: factory,
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
+				executionRunner: profilerun.NewExecutionRunner(
+					profilerun.ExecutionRunnerParams{
+						NewAgentRunner: func(
+							ctx context.Context,
+							params internal.NewAgentRunnerParams,
+						) (profilerun.AgentRunner, error) {
+							return factory.NewAgentRunner(ctx, params)
+						},
+						ToolsProvider:      internal.StaticTools(nil),
+						AppName:            defaultRunnerAppName,
+						DefaultAgentName:   defaultRunnerAgentName,
+						ProfilesService:    nil,
+						ACPProfileExecutor: nil,
+					},
+				),
 			}
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -450,310 +470,6 @@ func TestRunner(t *testing.T) {
 			assert.Contains(t, profileRunErr.Error(), "load-profile")
 		})
 
-		t.Run("profile-backed runner params include profile name and instructions", func(t *testing.T) {
-			r := &Runner{
-				runnerFactory: internal.NewAgentRunnerFactory(internal.AgentRunnerFactoryDeps{
-					LLMAdapterFactory: func(context.Context, string) (adkModel.LLM, error) {
-						return &fakeModel{}, nil
-					},
-					LLMAgentFactory:       llmagent.New,
-					LLMAgentRunnerFactory: internal.RunExecutorFactoryFromRunner,
-					SessionStorage:        sessions.NewMemorySessionsStorage(),
-					RootLogger:            rootTestLogger,
-				}),
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
-			}
-
-			modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-			profileName := "profile-" + fake.Lorem().Word()
-			instructions := fake.Lorem().Sentence(5)
-
-			params := r.newAgentRunnerParams(modelName, profileName, instructions)
-
-			assert.Equal(t, defaultRunnerAppName, params.AppName)
-			assert.Equal(t, profileName, params.AgentName)
-			assert.Equal(t, modelName, params.ModelName)
-			require.Len(t, params.SystemPromptFragments, 1)
-			assert.Equal(t, SystemPromptFragment{
-				Section: "Profile Instructions",
-				Content: instructions,
-			}, params.SystemPromptFragments[0])
-		})
-
-		t.Run("profileName branch coverage", func(t *testing.T) {
-			t.Run("returns execution error when profiles service is nil", func(t *testing.T) {
-				r := &Runner{}
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
-				}
-				profileName := "profile-" + fake.Lorem().Word()
-
-				_, err := r.Run(t.Context(), RunParams{
-					UserID:      fake.UUID().V4(),
-					SessionID:   fake.UUID().V4(),
-					Message:     msg,
-					ProfileName: profileName,
-				})
-
-				require.Error(t, err)
-				var profileRunErr *profilerun.Error
-				require.ErrorAs(t, err, &profileRunErr)
-				assert.Equal(t, profilerun.ErrorKindExecution, profileRunErr.Kind)
-			})
-
-			t.Run("returns error when regular profile has no model", func(t *testing.T) {
-				profileName := "profile-" + fake.Lorem().Word()
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
-				}
-				r := &Runner{
-					profiles: &stubProfilesService{
-						get: func(context.Context, string) (*ap.AgentProfile, error) {
-							return &ap.AgentProfile{
-								Name:              profileName,
-								ExecutionSettings: ap.ExecutionSettings{},
-							}, nil
-						},
-					},
-				}
-
-				_, err := r.Run(t.Context(), RunParams{
-					UserID:      fake.UUID().V4(),
-					SessionID:   fake.UUID().V4(),
-					Message:     msg,
-					ProfileName: profileName,
-				})
-
-				require.Error(t, err)
-				require.ErrorContains(t, err, "model is required")
-			})
-
-			t.Run("acp-stdio profile delegates to ACP runner", func(t *testing.T) {
-				profileName := "profile-" + fake.Lorem().Word()
-				messageText := fake.Lorem().Sentence(3)
-				sessionID := fake.UUID().V4()
-				userID := fake.UUID().V4()
-				expectedOutput := fake.Lorem().Sentence(4)
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: messageText}},
-				}
-
-				runner, err := NewRunner(RunnerArgs{
-					ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-					AgentProfilesService: &stubProfilesService{
-						get: func(context.Context, string) (*ap.AgentProfile, error) {
-							return &ap.AgentProfile{
-								Name:         profileName,
-								Instructions: fake.Lorem().Sentence(4),
-								ExecutionSettings: ap.ExecutionSettings{
-									Mode: ap.ExecutionModeACPStdio,
-									AgentCommand: ap.ACPStdioAgentCommand{
-										Command: "opencode",
-										Args:    []string{"acp"},
-									},
-								},
-							}, nil
-						},
-					},
-				}, WithLogger(rootTestLogger))
-				require.NoError(t, err)
-
-				var capturedRequest codinglane.ACPStdioExecutorRequest
-				payload, err := json.Marshal(map[string]string{"message": expectedOutput})
-				require.NoError(t, err)
-
-				acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-					acpstdio.NewACPProfileRunnerWithExecutorParams{
-						Executor: &acpExecutorStub{
-							execute: func(_ context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-								capturedRequest = request
-								return &codinglane.ACPStdioExecutorResult{
-									Updates: []codinglane.ACPStdioUpdate{{
-										Type:    "final",
-										Payload: json.RawMessage(payload),
-									}},
-								}, nil
-							},
-						},
-					},
-				)
-				require.NoError(t, err)
-				runner.acpProfileRun = acpRunner
-
-				result, runErr := runner.Run(
-					t.Context(),
-					RunParams{
-						UserID:      userID,
-						SessionID:   sessionID,
-						Message:     msg,
-						ProfileName: profileName,
-					},
-				)
-
-				require.NoError(t, runErr)
-				require.NotNil(t, result)
-				assert.Equal(t, sessionID, result.SessionID())
-				assert.Equal(t, ap.ExecutionModeACPStdio, capturedRequest.ExecutionSettings.ModeOrDefault())
-				assert.Contains(t, capturedRequest.Prompt, messageText)
-
-				got, err := result.ConsumeEventsAsString(t.Context())
-				require.NoError(t, err)
-				assert.Equal(t, expectedOutput, got)
-			})
-
-			t.Run("acp-stdio executor error is surfaced as stream error", func(t *testing.T) {
-				profileName := "profile-" + fake.Lorem().Word()
-				expectedErr := errors.New(fake.Lorem().Sentence(4))
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
-				}
-
-				runner, err := NewRunner(RunnerArgs{
-					ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-					AgentProfilesService: &stubProfilesService{
-						get: func(context.Context, string) (*ap.AgentProfile, error) {
-							return &ap.AgentProfile{
-								Name: profileName,
-								ExecutionSettings: ap.ExecutionSettings{
-									Mode: ap.ExecutionModeACPStdio,
-									AgentCommand: ap.ACPStdioAgentCommand{
-										Command: "opencode",
-										Args:    []string{"acp"},
-									},
-								},
-							}, nil
-						},
-					},
-				}, WithLogger(rootTestLogger))
-				require.NoError(t, err)
-
-				acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-					acpstdio.NewACPProfileRunnerWithExecutorParams{
-						Executor: &acpExecutorStub{
-							execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-								return nil, expectedErr
-							},
-						},
-					},
-				)
-				require.NoError(t, err)
-				runner.acpProfileRun = acpRunner
-
-				result, runErr := runner.Run(
-					t.Context(),
-					RunParams{
-						UserID:      fake.UUID().V4(),
-						SessionID:   fake.UUID().V4(),
-						Message:     msg,
-						ProfileName: profileName,
-					},
-				)
-
-				require.NoError(t, runErr)
-				require.NotNil(t, result)
-
-				_, err = result.ConsumeEventsAsString(t.Context())
-				require.Error(t, err)
-				require.ErrorContains(t, err, "acp-stdio-execution")
-				require.ErrorContains(t, err, expectedErr.Error())
-			})
-
-			t.Run("acp-stdio ignores request-level model", func(t *testing.T) {
-				profileName := "profile-" + fake.Lorem().Word()
-				requestModel := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-				messageText := fake.Lorem().Sentence(3)
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: messageText}},
-				}
-
-				runner, err := NewRunner(RunnerArgs{
-					ProvidersConfigService: lp.NewMockProvidersConfigService(t),
-					AgentProfilesService: &stubProfilesService{
-						get: func(context.Context, string) (*ap.AgentProfile, error) {
-							return &ap.AgentProfile{
-								Name: profileName,
-								ExecutionSettings: ap.ExecutionSettings{
-									Mode: ap.ExecutionModeACPStdio,
-									AgentCommand: ap.ACPStdioAgentCommand{
-										Command: "opencode",
-										Args:    []string{"acp"},
-									},
-								},
-							}, nil
-						},
-					},
-				}, WithLogger(rootTestLogger))
-				require.NoError(t, err)
-
-				acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-					acpstdio.NewACPProfileRunnerWithExecutorParams{
-						Executor: &acpExecutorStub{
-							execute: func(_ context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-								assert.Equal(t, ap.ExecutionModeACPStdio, request.ExecutionSettings.ModeOrDefault())
-								assert.Contains(t, request.Prompt, messageText)
-								return &codinglane.ACPStdioExecutorResult{
-									Updates: []codinglane.ACPStdioUpdate{{
-										Type:    "final",
-										Payload: json.RawMessage(`{"message":"ok"}`),
-									}},
-								}, nil
-							},
-						},
-					},
-				)
-				require.NoError(t, err)
-				runner.acpProfileRun = acpRunner
-
-				result, runErr := runner.Run(
-					t.Context(),
-					RunParams{
-						UserID:      fake.UUID().V4(),
-						SessionID:   fake.UUID().V4(),
-						Message:     msg,
-						Model:       requestModel,
-						ProfileName: profileName,
-					},
-				)
-
-				require.NoError(t, runErr)
-				require.NotNil(t, result)
-				got, err := result.ConsumeEventsAsString(t.Context())
-				require.NoError(t, err)
-				assert.Equal(t, "ok", got)
-			})
-
-			t.Run("returns unsupported error for unknown execution mode", func(t *testing.T) {
-				profileName := "profile-" + fake.Lorem().Word()
-				msg := &internal.MessageContent{
-					Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}},
-				}
-				r := &Runner{
-					profiles: &stubProfilesService{
-						get: func(context.Context, string) (*ap.AgentProfile, error) {
-							return &ap.AgentProfile{
-								Name: profileName,
-								ExecutionSettings: ap.ExecutionSettings{
-									Mode: ap.ExecutionMode("custom-backend"),
-								},
-							}, nil
-						},
-					},
-				}
-
-				_, err := r.Run(t.Context(), RunParams{
-					UserID:      fake.UUID().V4(),
-					SessionID:   fake.UUID().V4(),
-					Message:     msg,
-					ProfileName: profileName,
-				})
-
-				require.Error(t, err)
-				var profileRunErr *profilerun.Error
-				require.ErrorAs(t, err, &profileRunErr)
-				assert.Equal(t, profilerun.ErrorKindUnsupported, profileRunErr.Kind)
-			})
-		})
 		t.Run("tools registry path still resolves model and runs", func(t *testing.T) {
 			providerName := fake.Lorem().Word()
 			modelName := fake.Lorem().Word()
@@ -823,8 +539,19 @@ func TestRunner(t *testing.T) {
 			})
 			r := &Runner{
 				runnerFactory: factory,
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
+				executionRunner: profilerun.NewExecutionRunner(
+					profilerun.ExecutionRunnerParams{
+						NewAgentRunner: func(
+							ctx context.Context,
+							params internal.NewAgentRunnerParams,
+						) (profilerun.AgentRunner, error) {
+							return factory.NewAgentRunner(ctx, params)
+						},
+						ToolsProvider:    internal.StaticTools(nil),
+						AppName:          defaultRunnerAppName,
+						DefaultAgentName: defaultRunnerAgentName,
+					},
+				),
 			}
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -879,7 +606,6 @@ func TestRunner(t *testing.T) {
 					SessionStorage:        stor,
 					RootLogger:            rootTestLogger,
 				}),
-				toolsProvider: internal.StaticTools(nil),
 			}
 
 			result, err := r.ReadSession(ctx, ReadSessionParams{
@@ -912,7 +638,6 @@ func TestRunner(t *testing.T) {
 					SessionStorage:        sessions.NewMemorySessionsStorage(),
 					RootLogger:            rootTestLogger,
 				}),
-				toolsProvider: internal.StaticTools(nil),
 			}
 
 			result, err := r.ReadSession(ctx, ReadSessionParams{
@@ -926,18 +651,30 @@ func TestRunner(t *testing.T) {
 		t.Run("uses the same session service instance as Run", func(t *testing.T) {
 			ctx := t.Context()
 			stor := sessions.NewMemorySessionsStorage()
+			factory := internal.NewAgentRunnerFactory(internal.AgentRunnerFactoryDeps{
+				LLMAdapterFactory: func(context.Context, string) (adkModel.LLM, error) {
+					return &fakeModel{}, nil
+				},
+				LLMAgentFactory:       llmagent.New,
+				LLMAgentRunnerFactory: internal.RunExecutorFactoryFromRunner,
+				SessionStorage:        stor,
+				RootLogger:            rootTestLogger,
+			})
 			r := &Runner{
-				runnerFactory: internal.NewAgentRunnerFactory(internal.AgentRunnerFactoryDeps{
-					LLMAdapterFactory: func(context.Context, string) (adkModel.LLM, error) {
-						return &fakeModel{}, nil
+				runnerFactory: factory,
+				executionRunner: profilerun.NewExecutionRunner(
+					profilerun.ExecutionRunnerParams{
+						NewAgentRunner: func(
+							ctx context.Context,
+							params internal.NewAgentRunnerParams,
+						) (profilerun.AgentRunner, error) {
+							return factory.NewAgentRunner(ctx, params)
+						},
+						ToolsProvider:    internal.StaticTools(nil),
+						AppName:          defaultRunnerAppName,
+						DefaultAgentName: defaultRunnerAgentName,
 					},
-					LLMAgentFactory:       llmagent.New,
-					LLMAgentRunnerFactory: internal.RunExecutorFactoryFromRunner,
-					SessionStorage:        stor,
-					RootLogger:            rootTestLogger,
-				}),
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
+				),
 			}
 
 			sessionID := fake.UUID().V4()
@@ -1001,8 +738,6 @@ func TestRunner(t *testing.T) {
 					SessionStorage:        stor,
 					RootLogger:            rootTestLogger,
 				}),
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
 			}
 
 			result, err := r.ListSessions(ctx, ListSessionsParams{
@@ -1023,6 +758,81 @@ func TestRunner(t *testing.T) {
 		t.Run("returns nil when unset", func(t *testing.T) {
 			r := &Runner{}
 			assert.Nil(t, r.ModelsLocator())
+		})
+
+		t.Run("returns configured locator when set", func(t *testing.T) {
+			locator := &internal.ModelsLocator{}
+			r := &Runner{modelsLocator: locator}
+			got := r.ModelsLocator()
+			require.NotNil(t, got)
+			cast, ok := got.(*internal.ModelsLocator)
+			require.True(t, ok)
+			assert.Same(t, locator, cast)
+		})
+	})
+
+	t.Run("acpProfileExecutorAdapter", func(t *testing.T) {
+		t.Run("returns execution error when runner is unavailable", func(t *testing.T) {
+			adapter := acpProfileExecutorAdapter{}
+			result, err := adapter.RunACPProfile(t.Context(), profilerun.ACPRunRequest{})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			var runErr *profilerun.Error
+			require.ErrorAs(t, err, &runErr)
+			assert.Equal(t, profilerun.ErrorKindExecution, runErr.Kind)
+			assert.Equal(t, "run-acp-profile", runErr.Op)
+			assert.EqualError(t, runErr.Err, "ACP profile runner unavailable")
+		})
+
+		t.Run("forwards request fields to ACP profile runner", func(t *testing.T) {
+			profileName := "profile-" + fake.Lorem().Word()
+			userID := fake.UUID().V4()
+			sessionID := fake.UUID().V4()
+			modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
+			msg := &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}}
+			profile := &ap.AgentProfile{
+				Name: profileName,
+				ExecutionSettings: ap.ExecutionSettings{
+					Mode:         ap.ExecutionModeACPStdio,
+					AgentCommand: ap.ACPStdioAgentCommand{Command: "opencode", Args: []string{"acp"}},
+				},
+			}
+
+			execSpy := &stubACPExecutor{
+				result: &codinglane.ACPStdioExecutorResult{
+					Updates: []codinglane.ACPStdioUpdate{
+						{Type: "final", Payload: []byte(`"ok"`)},
+					},
+				},
+			}
+			recorder := &spySessionRecorder{}
+			acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
+				acpstdio.NewACPProfileRunnerWithExecutorParams{
+					Executor: execSpy,
+					Recorder: recorder,
+				},
+			)
+			require.NoError(t, err)
+
+			adapter := acpProfileExecutorAdapter{runner: acpRunner}
+			result, err := adapter.RunACPProfile(t.Context(), profilerun.ACPRunRequest{
+				ProfileName: profileName,
+				Profile:     profile,
+				Model:       modelName,
+				UserID:      userID,
+				SessionID:   sessionID,
+				Message:     msg,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, sessionID, result.SessionID())
+			require.NotNil(t, recorder.lastRequest)
+			assert.Equal(t, profileName, recorder.lastRequest.ProfileName)
+			assert.Equal(t, profile, recorder.lastRequest.Profile)
+			assert.Equal(t, modelName, recorder.lastRequest.Model)
+			assert.Equal(t, userID, recorder.lastRequest.UserID)
+			assert.Equal(t, sessionID, recorder.lastRequest.SessionID)
+			assert.Equal(t, msg, recorder.lastRequest.Message)
 		})
 	})
 }
@@ -1089,13 +899,28 @@ func (s *stubProfilesService) AutoMigrate() error {
 	panic("unexpected AutoMigrate call")
 }
 
-type acpExecutorStub struct {
-	execute func(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
+type stubACPExecutor struct {
+	result *codinglane.ACPStdioExecutorResult
+	err    error
 }
 
-func (s *acpExecutorStub) Execute(
-	ctx context.Context,
-	request codinglane.ACPStdioExecutorRequest,
+func (s *stubACPExecutor) Execute(
+	context.Context,
+	codinglane.ACPStdioExecutorRequest,
 ) (*codinglane.ACPStdioExecutorResult, error) {
-	return s.execute(ctx, request)
+	return s.result, s.err
+}
+
+type spySessionRecorder struct {
+	lastRequest *acpstdio.RunRequest
+}
+
+func (s *spySessionRecorder) Record(
+	_ context.Context,
+	request acpstdio.RunRequest,
+	_ []*internal.SessionEvent,
+) error {
+	reqCopy := request
+	s.lastRequest = &reqCopy
+	return nil
 }

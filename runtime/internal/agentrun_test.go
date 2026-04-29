@@ -771,6 +771,61 @@ func TestAgentRunnerFactory(t *testing.T) {
 			require.Error(t, err)
 			assert.Nil(t, result)
 		})
+
+		t.Run("*AgentRunner ReadSession returns mapped events", func(t *testing.T) {
+			ctx := t.Context()
+			appName := fake.Lorem().Word()
+			userID := fake.UUID().V4()
+			sessionID := fake.UUID().V4()
+			text := fake.Lorem().Sentence(3)
+
+			stor := sessions.NewMemorySessionsStorage()
+			createResp, err := stor.Create(ctx, &session.CreateRequest{
+				AppName:   appName,
+				UserID:    userID,
+				SessionID: sessionID,
+				State:     make(map[string]any),
+			})
+			require.NoError(t, err)
+			ev := session.NewEvent(fake.UUID().V4())
+			ev.Content = &genai.Content{Parts: []*genai.Part{{Text: text}}}
+			require.NoError(t, stor.AppendEvent(ctx, createResp.Session, ev))
+
+			runner := &AgentRunner{
+				appName:        appName,
+				sessionStorage: stor,
+				logger:         RootTestLogger(),
+			}
+			result, err := runner.ReadSession(ctx, ReadSessionParams{
+				UserID:    userID,
+				SessionID: sessionID,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			var events []*SessionEvent
+			for event, eventErr := range result.Events() {
+				require.NoError(t, eventErr)
+				events = append(events, event)
+			}
+			require.Len(t, events, 1)
+			require.NotNil(t, events[0].Content)
+			assert.Equal(t, text, events[0].Content.Parts[0].Text)
+		})
+
+		t.Run("*AgentRunner ReadSession propagates storage errors", func(t *testing.T) {
+			ctx := t.Context()
+			runner := &AgentRunner{
+				appName:        fake.Lorem().Word(),
+				sessionStorage: sessions.NewMemorySessionsStorage(),
+				logger:         RootTestLogger(),
+			}
+			result, err := runner.ReadSession(ctx, ReadSessionParams{
+				UserID:    fake.UUID().V4(),
+				SessionID: fake.UUID().V4(),
+			})
+			require.Error(t, err)
+			assert.Nil(t, result)
+		})
 	})
 
 	t.Run("ListSessions", func(t *testing.T) {

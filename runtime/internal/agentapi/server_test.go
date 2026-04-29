@@ -3,17 +3,14 @@
 package agentapi
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"iter"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -23,13 +20,10 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	"github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
-	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/adk/agent/llmagent"
-	"google.golang.org/adk/model"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -67,28 +61,6 @@ func TestAgentAPIServer(t *testing.T) {
 		t.Helper()
 		return newTestAgentAPIServerWithProfiles(t, runner, gen, nil)
 	}
-	newACPProfileServer := func(
-		t *testing.T,
-		gen IDGen,
-		profilesSvc *mockAgentProfilesService,
-	) http.Handler {
-		t.Helper()
-
-		log := slog.New(slog.NewTextHandler(io.Discard, nil))
-		providersSvc := llmproviders.NewMockProvidersConfigService(t)
-		providersSvc.EXPECT().List(mock.Anything).Return([]llmproviders.ProviderConfig{}, nil).Maybe()
-		runner, err := agent.NewRunner(
-			agent.RunnerArgs{
-				ProvidersConfigService: providersSvc,
-				AgentProfilesService:   profilesSvc,
-			},
-			agent.WithLogger(log),
-		)
-		require.NoError(t, err)
-
-		srv := newTestAgentAPIServerWithProfiles(t, runner, gen, profilesSvc)
-		return HandlerFromMux(srv, http.NewServeMux())
-	}
 
 	t.Run("StartAgentRun", func(t *testing.T) {
 		makeReq := func(t *testing.T, ctx context.Context, msg, profileName, path string) *http.Request {
@@ -98,19 +70,6 @@ func TestAgentAPIServer(t *testing.T) {
 				body = fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
 			}
 			return httptest.NewRequestWithContext(ctx, http.MethodPost, path, strings.NewReader(body))
-		}
-
-		makeACPProfile := func(name string, args []string) *ap.AgentProfile {
-			return &ap.AgentProfile{
-				Name: name,
-				ExecutionSettings: ap.ExecutionSettings{
-					Mode: ap.ExecutionModeACPStdio,
-					AgentCommand: ap.ACPStdioAgentCommand{
-						Command: os.Args[0],
-						Args:    args,
-					},
-				},
-			}
 		}
 
 		t.Run("success_SSE_sessionBound_and_done", func(t *testing.T) {
@@ -506,275 +465,6 @@ func TestAgentAPIServer(t *testing.T) {
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
 			assert.Contains(t, *pd.Detail, "agent profile not found")
-		})
-
-		t.Run("acp_profile_streams_standard_sse", func(t *testing.T) {
-			t.Parallel()
-
-			fake := faker.New()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			profileName := "profile-" + fake.Lorem().Word()
-			agentText := fake.Lorem().Sentence(4)
-
-			gen := NewMockIDGen()
-			expSID := MockIDGenNextGenerated(gen).String()
-			m := agent.NewMockAgentRunner(t)
-			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
-				return p.ProfileName == profileName &&
-					p.UserID == userID &&
-					p.SessionID == expSID
-			})).Return(rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
-				_ = yield(&rt.SessionEvent{
-					TurnComplete: true,
-					Content: &rt.SessionEventContent{
-						Role:  "model",
-						Parts: []rt.SessionEventPart{{Text: agentText}},
-					},
-				}, nil)
-			}, expSID), nil)
-			srv := newTestAgentAPIServer(t, m, gen)
-			mux := http.NewServeMux()
-			h := HandlerFromMux(srv, mux)
-
-			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusOK, rec.Code)
-			blocks := parseSSEBlocks(rec.Body.String())
-			require.Len(t, blocks, 3)
-			assert.Equal(t, "sessionBound", blocks[0].event)
-			assert.Equal(t, "agent", blocks[1].event)
-			assert.Equal(t, "done", blocks[2].event)
-		})
-
-		t.Run("acp_profile_ignores_request_model_override", func(t *testing.T) {
-			t.Parallel()
-
-			fake := faker.New()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			profileName := "profile-" + fake.Lorem().Word()
-			overrideModel := "myprovider/" + fake.Lorem().Word()
-			agentText := fake.Lorem().Sentence(4)
-
-			gen := NewMockIDGen()
-			expSID := MockIDGenNextGenerated(gen).String()
-			m := agent.NewMockAgentRunner(t)
-			m.EXPECT().Run(mock.Anything, mock.MatchedBy(func(p rt.RunParams) bool {
-				return p.ProfileName == profileName &&
-					p.Model == overrideModel &&
-					p.UserID == userID &&
-					p.SessionID == expSID
-			})).Return(rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
-				_ = yield(&rt.SessionEvent{
-					TurnComplete: true,
-					Content: &rt.SessionEventContent{
-						Role:  "model",
-						Parts: []rt.SessionEventPart{{Text: agentText}},
-					},
-				}, nil)
-			}, expSID), nil)
-			srv := newTestAgentAPIServer(t, m, gen)
-			mux := http.NewServeMux()
-			h := HandlerFromMux(srv, mux)
-
-			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			body := fmt.Sprintf(
-				`{"profileName":%q,"model":%q,"message":{"parts":[{"text":%q}]}}`,
-				profileName,
-				overrideModel,
-				msg,
-			)
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusOK, rec.Code)
-			blocks := parseSSEBlocks(rec.Body.String())
-			require.Len(t, blocks, 3)
-			assert.Equal(t, "sessionBound", blocks[0].event)
-			assert.Equal(t, "agent", blocks[1].event)
-			assert.Equal(t, "done", blocks[2].event)
-		})
-
-		t.Run("acp_profile_launch_success_replays_session_history", func(t *testing.T) {
-			fake := faker.New()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			profileName := "profile-" + fake.Lorem().Word()
-			progressText := fake.Lorem().Sentence(2)
-			finalText := fake.Lorem().Sentence(3)
-
-			t.Setenv("SONALMOD_AGENTAPI_ACP_HELPER_MODE", "success")
-			t.Setenv("SONALMOD_AGENTAPI_ACP_PROGRESS_TEXT", progressText)
-			t.Setenv("SONALMOD_AGENTAPI_ACP_FINAL_TEXT", finalText)
-
-			gen := NewMockIDGen()
-			expSID := MockIDGenNextGenerated(gen).String()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On(
-				"Get",
-				mock.Anything,
-				profileName,
-			).Return(
-				makeACPProfile(
-					profileName,
-					[]string{"-test.run=TestAgentAPIServerACPHelperProcess", "--"},
-				),
-				nil,
-			).Once()
-
-			h := newACPProfileServer(t, gen, profilesSvc)
-
-			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusOK, rec.Code)
-			runBlocks := parseSSEBlocks(rec.Body.String())
-			require.Len(t, runBlocks, 4)
-			assert.Equal(t, "sessionBound", runBlocks[0].event)
-			assert.Equal(t, "agent", runBlocks[1].event)
-			assert.Equal(t, "agent", runBlocks[2].event)
-			assert.Equal(t, "done", runBlocks[3].event)
-			assert.Contains(t, runBlocks[1].data, progressText)
-			assert.Contains(t, runBlocks[2].data, finalText)
-
-			var sessionBound SessionBoundEvent
-			require.NoError(t, json.Unmarshal([]byte(runBlocks[0].data), &sessionBound))
-			assert.Equal(t, expSID, sessionBound.SessionId)
-
-			readReq := httptest.NewRequestWithContext(ctx, http.MethodGet, "/sessions/"+expSID, nil)
-			readRec := httptest.NewRecorder()
-			h.ServeHTTP(readRec, readReq)
-
-			require.Equal(t, http.StatusOK, readRec.Code)
-			readBlocks := parseSSEBlocks(readRec.Body.String())
-			require.Len(t, readBlocks, 5)
-			assert.Equal(t, "sessionBound", readBlocks[0].event)
-			assert.Equal(t, "sessionStatus", readBlocks[1].event)
-			assert.Equal(t, "agent", readBlocks[2].event)
-			assert.Equal(t, "agent", readBlocks[3].event)
-			assert.Equal(t, "done", readBlocks[4].event)
-			assert.Contains(t, readBlocks[2].data, msg)
-			assert.Contains(t, readBlocks[3].data, finalText)
-
-			var status SessionStatusEvent
-			require.NoError(t, json.Unmarshal([]byte(readBlocks[1].data), &status))
-			assert.Equal(t, Idle, status.Status)
-		})
-
-		t.Run("acp_profile_launch_failure_streams_standard_error", func(t *testing.T) {
-			fake := faker.New()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			profileName := "profile-" + fake.Lorem().Word()
-
-			gen := NewMockIDGen()
-			expSID := MockIDGenNextGenerated(gen).String()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On("Get", mock.Anything, profileName).Return(&ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					Mode: ap.ExecutionModeACPStdio,
-					AgentCommand: ap.ACPStdioAgentCommand{
-						Command: "/no/such/opencode-binary",
-					},
-				},
-			}, nil).Once()
-
-			h := newACPProfileServer(t, gen, profilesSvc)
-
-			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/agent-runs", strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusOK, rec.Code)
-			blocks := parseSSEBlocks(rec.Body.String())
-			require.Len(t, blocks, 3)
-			assert.Equal(t, "sessionBound", blocks[0].event)
-			assert.Equal(t, "error", blocks[1].event)
-			assert.Equal(t, "done", blocks[2].event)
-			assert.Contains(t, blocks[1].data, "acp-stdio-subprocess")
-
-			var sessionBound SessionBoundEvent
-			require.NoError(t, json.Unmarshal([]byte(blocks[0].data), &sessionBound))
-			assert.Equal(t, expSID, sessionBound.SessionId)
-		})
-
-		t.Run("integration_realAgentRunner", func(t *testing.T) {
-			t.Parallel()
-
-			fake := faker.New()
-			ctx := t.Context()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			modelName := "myprovider/" + fake.Lorem().Word()
-
-			gen := NewMockIDGen()
-			expSID := MockIDGenNextGenerated(gen).String()
-
-			f := rt.NewAgentRunnerFactory(rt.AgentRunnerFactoryDeps{
-				LLMAdapterFactory: func(context.Context, string) (model.LLM, error) {
-					return &smokeIntegrationFakeLLM{}, nil
-				},
-				LLMAgentFactory:       llmagent.New,
-				LLMAgentRunnerFactory: rt.RunExecutorFactoryFromRunner,
-				SessionStorage:        sessions.NewMemorySessionsStorage(),
-				RootLogger:            slog.New(slog.NewTextHandler(io.Discard, nil)),
-			})
-
-			ar, err := f.NewAgentRunner(ctx, rt.NewAgentRunnerParams{
-				AppName:   fake.Lorem().Word(),
-				AgentName: fake.Lorem().Word(),
-				SystemPromptFragments: []rt.SystemPromptFragment{
-					{Section: fake.Lorem().Word(), Content: fake.Lorem().Sentence(3)},
-				},
-				ToolsRegistry: rt.StaticTools(nil),
-				ModelName:     "",
-			})
-			require.NoError(t, err)
-			require.NotNil(t, ar)
-
-			log := slog.New(slog.NewTextHandler(io.Discard, nil))
-			bgRunner := rt.NewBackgroundRunner(rt.BackgroundRunnerDeps{
-				Runner: ar,
-				Logger: log,
-			})
-			srv := newTestAgentAPIServer(t, bgRunner, gen)
-
-			mux := http.NewServeMux()
-			h := HandlerFromMux(srv, mux)
-
-			body := fmt.Sprintf(`{"model":%q,"message":{"parts":[{"text":%q}]}}`, modelName, msg)
-			reqCtx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			req := httptest.NewRequestWithContext(reqCtx, http.MethodPost, "/agent-runs", strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusOK, rec.Code)
-			assert.Contains(t, rec.Header().Get("Content-Type"), "text/event-stream")
-
-			blocks := parseSSEBlocks(rec.Body.String())
-			require.GreaterOrEqual(t, len(blocks), 2)
-			assert.Equal(t, "sessionBound", blocks[0].event)
-			assert.Equal(t, "done", blocks[len(blocks)-1].event)
-
-			var sb SessionBoundEvent
-			require.NoError(t, json.Unmarshal([]byte(blocks[0].data), &sb))
-			assert.Equal(t, expSID, sb.SessionId)
-
-			bodyStr := rec.Body.String()
-			assert.Contains(t, bodyStr, `"event":"agent"`)
-			assert.Contains(t, bodyStr, "smoke-ok")
 		})
 	})
 
@@ -1266,7 +956,7 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, *pd.Detail, "agent profile not found")
 		})
 
-		t.Run("acp_profile_streams_standard_error", func(t *testing.T) {
+		t.Run("stream_event_error_is_written_to_sse", func(t *testing.T) {
 			t.Parallel()
 
 			fake := faker.New()
@@ -1281,7 +971,7 @@ func TestAgentAPIServer(t *testing.T) {
 				return p.ProfileName == profileName && p.UserID == userID && p.SessionID == sessPath
 			})).Return(rt.NewRunResult(func(yield func(*rt.SessionEvent, error) bool) {
 				_ = yield(&rt.SessionEvent{
-					ErrorCode:    "acp-stdio-protocol",
+					ErrorCode:    "stream-protocol",
 					ErrorMessage: streamErr,
 				}, nil)
 			}, sessPath), nil)
@@ -1302,55 +992,6 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Equal(t, "error", blocks[1].event)
 			assert.Equal(t, "done", blocks[2].event)
 			assert.Contains(t, blocks[1].data, streamErr)
-		})
-
-		t.Run("acp_profile_protocol_failure_streams_standard_error", func(t *testing.T) {
-			fake := faker.New()
-			userID := fake.Internet().User()
-			msg := fake.Lorem().Sentence(3)
-			sessPath := fake.UUID().V4()
-			profileName := "profile-" + fake.Lorem().Word()
-
-			t.Setenv("SONALMOD_AGENTAPI_ACP_HELPER_MODE", "bad-initialize")
-			gen := NewMockIDGen()
-			profilesSvc := &mockAgentProfilesService{}
-			profilesSvc.On(
-				"Get",
-				mock.Anything,
-				profileName,
-			).Return(
-				&ap.AgentProfile{
-					Name: profileName,
-					ExecutionSettings: ap.ExecutionSettings{
-						Mode: ap.ExecutionModeACPStdio,
-						AgentCommand: ap.ACPStdioAgentCommand{
-							Command: os.Args[0],
-							Args:    []string{"-test.run=TestAgentAPIServerACPHelperProcess", "--"},
-						},
-					},
-				},
-				nil,
-			).Once()
-
-			h := newACPProfileServer(t, gen, profilesSvc)
-
-			ctx := callerid.ContextWith(t.Context(), &fakeCallerIdentity{userID: userID})
-			body := fmt.Sprintf(`{"profileName":%q,"message":{"parts":[{"text":%q}]}}`, profileName, msg)
-			req := httptest.NewRequestWithContext(ctx, http.MethodPost, continuePath(sessPath), strings.NewReader(body))
-			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, req)
-
-			require.Equal(t, http.StatusOK, rec.Code)
-			blocks := parseSSEBlocks(rec.Body.String())
-			require.Len(t, blocks, 3)
-			assert.Equal(t, "sessionBound", blocks[0].event)
-			assert.Equal(t, "error", blocks[1].event)
-			assert.Equal(t, "done", blocks[2].event)
-			assert.Contains(t, blocks[1].data, "acp-stdio-protocol")
-
-			var sessionBound SessionBoundEvent
-			require.NoError(t, json.Unmarshal([]byte(blocks[0].data), &sessionBound))
-			assert.Equal(t, sessPath, sessionBound.SessionId)
 		})
 
 		t.Run("profile_dispatch_validation_error_returns_400", func(t *testing.T) {
@@ -1440,132 +1081,4 @@ func TestAgentAPIServer(t *testing.T) {
 			assert.Contains(t, rec.Body.String(), "event: error")
 		})
 	})
-}
-
-// smokeIntegrationFakeLLM implements model.LLM for wiring *AgentRunner through HTTP without a live LLM (same pattern as internal/agentrun_test.go fakeModel).
-type smokeIntegrationFakeLLM struct{ name string }
-
-func (m *smokeIntegrationFakeLLM) Name() string {
-	if m.name != "" {
-		return m.name
-	}
-	return "fake"
-}
-
-func (m *smokeIntegrationFakeLLM) GenerateContent(
-	_ context.Context,
-	_ *model.LLMRequest,
-	_ bool,
-) iter.Seq2[*model.LLMResponse, error] {
-	return func(yield func(*model.LLMResponse, error) bool) {
-		yield(&model.LLMResponse{
-			Content: &genai.Content{
-				Parts: []*genai.Part{{Text: "smoke-ok"}},
-			},
-		}, nil)
-	}
-}
-
-func TestAgentAPIServerACPHelperProcess(_ *testing.T) {
-	mode := os.Getenv("SONALMOD_AGENTAPI_ACP_HELPER_MODE")
-	if mode == "" {
-		return
-	}
-
-	progressText := os.Getenv("SONALMOD_AGENTAPI_ACP_PROGRESS_TEXT")
-	if progressText == "" {
-		progressText = "thinking"
-	}
-	finalText := os.Getenv("SONALMOD_AGENTAPI_ACP_FINAL_TEXT")
-	if finalText == "" {
-		finalText = "done"
-	}
-
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
-		}
-
-		var req map[string]any
-		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			fmt.Fprintf(
-				os.Stdout,
-				"{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,\"message\":\"%s\"}}\n",
-				err.Error(),
-			)
-			continue
-		}
-
-		id := req["id"]
-		method, _ := req["method"].(string)
-		switch mode {
-		case "success":
-			switch method {
-			case "initialize":
-				writeACPHelperResult(id, map[string]any{"capabilities": map[string]any{}})
-			case "session/new":
-				writeACPHelperResult(id, map[string]any{"sessionId": "session-1"})
-			case "session/prompt":
-				writeACPHelperNotification("session/update", map[string]any{
-					"sessionId": "session-1",
-					"update": map[string]any{
-						"type":    "progress",
-						"message": progressText,
-					},
-				})
-				writeACPHelperNotification("session/update", map[string]any{
-					"sessionId": "session-1",
-					"update": map[string]any{
-						"type":    "final",
-						"message": finalText,
-					},
-				})
-				writeACPHelperResult(id, map[string]any{"ok": true})
-			default:
-				writeACPHelperError(id, -32601, "Method not found")
-			}
-		case "bad-initialize":
-			if method == "initialize" {
-				writeACPHelperResult(id, "bad-result")
-				continue
-			}
-			writeACPHelperError(id, -32601, "Method not found")
-		default:
-			writeACPHelperError(id, -32603, "Unknown helper mode")
-		}
-	}
-
-	os.Exit(0)
-}
-
-func writeACPHelperResult(id any, result any) {
-	encoded, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"result":  result,
-	})
-	fmt.Fprintf(os.Stdout, "%s\n", encoded)
-}
-
-func writeACPHelperNotification(method string, params any) {
-	encoded, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"method":  method,
-		"params":  params,
-	})
-	fmt.Fprintf(os.Stdout, "%s\n", encoded)
-}
-
-func writeACPHelperError(id any, code int, message string) {
-	encoded, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0",
-		"id":      id,
-		"error": map[string]any{
-			"code":    code,
-			"message": message,
-		},
-	})
-	fmt.Fprintf(os.Stdout, "%s\n", encoded)
 }
