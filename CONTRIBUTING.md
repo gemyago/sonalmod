@@ -87,7 +87,13 @@ go run ./cmd/sonalmod start
 cd apps/sonal-ui
 npm i
 npm run dev
+
+# Start everything in one terminal
+nx run-many -t dev
 ```
+
+Frontend host/port: http://localhost:5173
+Backend host/port: http://localhost:8080
 
 ### Combined local mode (backend serves built UI)
 
