@@ -29,6 +29,30 @@ go run . run \
 
 Replace `'<provider/model>'` with a real name printed by `list-models`.
 
+## integration-cli ACP probe mode
+
+`tests/agent/integration-cli` also includes an `acp` subcommand for manual protocol probing against an ACP-capable agent.
+
+Prerequisites:
+- `opencode` is installed and available in `PATH`
+- the local `opencode acp` environment is authenticated and ready for interactive use
+
+Example command shape:
+
+```bash
+cd tests/agent/integration-cli
+go run . acp \
+  --agent-command opencode \
+  --agent-arg acp \
+  --prompt "hello from integration-cli" \
+  --transcript ../../docs/implementation/opencode-acp-transcripts/probe.jsonl
+```
+
+Optional flags:
+- `--cwd` to set the ACP agent working directory
+- `--load-session` to call `session/load` when advertised by agent capabilities
+- `--cancel-after` to issue `session/cancel` after a delay
+
 ### Run agent test scenarios via the master orchestrator
 
 Once setup check succeeds, follow [./agent/scenarios/master.md](./agent/scenarios/master.md)

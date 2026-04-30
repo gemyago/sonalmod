@@ -1,6 +1,7 @@
 package agentapi
 
 import (
+	"encoding/json"
 	"testing"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
@@ -74,6 +75,54 @@ func TestAgentAPIRequestMapper(t *testing.T) {
 				},
 			}
 			assert.Equal(t, want, got)
+		})
+	})
+
+	t.Run("AgentRunRequestJSON", func(t *testing.T) {
+		t.Run("includes_optional_profileName_and_model", func(t *testing.T) {
+			fake := faker.New()
+			profileName := "profile-" + fake.Lorem().Word()
+			modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
+			text := fake.Lorem().Sentence(4)
+
+			body := AgentRunRequest{
+				ProfileName: &profileName,
+				Model:       &modelName,
+				Message: UserMessageContent{
+					Parts: []UserMessagePart{
+						{Text: text},
+					},
+				},
+			}
+
+			data, err := json.Marshal(body)
+			require.NoError(t, err)
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(data, &got))
+			assert.Equal(t, profileName, got["profileName"])
+			assert.Equal(t, modelName, got["model"])
+		})
+
+		t.Run("omits_profileName_and_model_when_nil", func(t *testing.T) {
+			fake := faker.New()
+			text := fake.Lorem().Sentence(4)
+
+			body := AgentRunRequest{
+				Message: UserMessageContent{
+					Parts: []UserMessagePart{
+						{Text: text},
+					},
+				},
+			}
+
+			data, err := json.Marshal(body)
+			require.NoError(t, err)
+
+			var got map[string]any
+			require.NoError(t, json.Unmarshal(data, &got))
+			assert.NotContains(t, got, "profileName")
+			assert.NotContains(t, got, "model")
 		})
 	})
 }

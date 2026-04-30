@@ -13,12 +13,11 @@ tmp
 # User configs
 **/internal/config/*-user.yaml
 
-# Ignore cursor stuff for now
+# Want to figure-out how to make it nice and not bloat the repo
+# Ignoring for now.
 .cursor
-
-# Ignore openspec stuff for now
-# Not sure if it's useful to keep it
-openspec
+.opencode
+.codex
 
 # Node stuff
 node_modules
@@ -26,3 +25,7 @@ node_modules
 
 .nx/cache
 .nx/workspace-data
+.cache/
+
+# Local ACP probe outputs (generated on demand, not committed)
+docs/implementation/opencode-acp-transcripts/*.jsonl

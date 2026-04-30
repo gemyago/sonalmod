@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gemyago/sonalmod/runtime/internal"
+	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
@@ -23,11 +24,18 @@ import (
 func TestRunner(t *testing.T) {
 	fake := faker.New()
 	rootTestLogger := internal.RootTestLogger()
+	newTestProfilesService := func(t *testing.T) AgentProfilesService {
+		t.Helper()
+		svc, err := NewFileAgentProfilesService(t.TempDir(), rootTestLogger)
+		require.NoError(t, err)
+		return svc
+	}
 	t.Run("NewRunner", func(t *testing.T) {
 		t.Run("succeeds with ProvidersConfigService", func(t *testing.T) {
 			providersSvc := lp.NewMockProvidersConfigService(t)
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 			require.NotNil(t, runner)
@@ -36,6 +44,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds with optional tools registry", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			},
 				WithLogger(rootTestLogger),
 				WithToolsRegistry(NewToolsRegistry()),
@@ -47,6 +56,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds with system prompt fragments", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			},
 				WithLogger(rootTestLogger),
 				WithSystemPromptFragments(SystemPromptFragment{
@@ -59,15 +69,26 @@ func TestRunner(t *testing.T) {
 		})
 
 		t.Run("returns error when ProvidersConfigService is nil", func(t *testing.T) {
-			_, err := NewRunner(RunnerArgs{})
+			_, err := NewRunner(RunnerArgs{
+				AgentProfilesService: newTestProfilesService(t),
+			})
 			require.Error(t, err)
 			require.ErrorContains(t, err, "providers config service is required")
+		})
+
+		t.Run("returns error when AgentProfilesService is nil", func(t *testing.T) {
+			_, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+			})
+			require.Error(t, err)
+			require.ErrorContains(t, err, "agent profiles service is required")
 		})
 
 		t.Run("succeeds with file system storage", func(t *testing.T) {
 			dir := t.TempDir()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithFileSystemStorage(dir))
 			require.NoError(t, err)
 			require.NotNil(t, runner)
@@ -76,6 +97,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns error when file storage base dir is invalid", func(t *testing.T) {
 			_, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithFileSystemStorage(""))
 			require.Error(t, err)
 			require.ErrorContains(t, err, "session storage")
@@ -84,6 +106,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds with database storage", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithDatabaseStorage(":memory:"))
 			require.NoError(t, err)
 			require.NotNil(t, runner)
@@ -93,6 +116,7 @@ func TestRunner(t *testing.T) {
 			prefix := fake.Lexify("?????_")
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			},
 				WithLogger(rootTestLogger),
 				WithDatabaseStorage(":memory:"),
@@ -105,6 +129,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns error when database DSN is invalid", func(t *testing.T) {
 			_, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithDatabaseStorage("host=bad port=0 dbname=none"))
 			require.Error(t, err)
 			require.ErrorContains(t, err, "session storage")
@@ -131,6 +156,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns nil when using in-memory storage", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 			require.NoError(t, runner.AutoMigrate())
@@ -140,6 +166,7 @@ func TestRunner(t *testing.T) {
 			dir := t.TempDir()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithFileSystemStorage(dir))
 			require.NoError(t, err)
 			require.NoError(t, runner.AutoMigrate())
@@ -148,6 +175,7 @@ func TestRunner(t *testing.T) {
 		t.Run("succeeds when using database storage", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger), WithDatabaseStorage(":memory:"))
 			require.NoError(t, err)
 			require.NoError(t, runner.AutoMigrate())
@@ -155,26 +183,25 @@ func TestRunner(t *testing.T) {
 	})
 
 	t.Run("Run", func(t *testing.T) {
+		t.Run("returns error when execution runner is missing", func(t *testing.T) {
+			r := &Runner{}
+			result, err := r.Run(t.Context(), RunParams{})
+			require.Error(t, err)
+			assert.Nil(t, result)
+			assert.EqualError(t, err, "execution runner is required")
+		})
+
 		t.Run("empty sessionID returns error", func(t *testing.T) {
-			prov := fake.Lorem().Word()
-			mod := fake.Lorem().Word()
-			fq := prov + "/" + mod
-			providersSvc := lp.NewMockProvidersConfigService(t)
-			providersSvc.EXPECT().Get(mock.Anything, prov).Return(&lp.ProviderConfig{
-				Name:   prov,
-				APIKey: fake.Lorem().Word(),
-			}, nil)
-			fakeG := internal.NewFakeGenkitInstance()
 			runner, err := NewRunner(RunnerArgs{
-				ProvidersConfigService: providersSvc,
-				genkitInitFunc:         fakeG.InitFunc(),
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 
 			_, err = runner.Run(t.Context(), RunParams{
 				UserID:    fake.UUID().V4(),
 				SessionID: "",
-				Model:     fq,
+				Model:     fake.Lorem().Word() + "/" + fake.Lorem().Word(),
 				Message:   &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Word()}}},
 			})
 			require.Error(t, err)
@@ -194,10 +221,16 @@ func TestRunner(t *testing.T) {
 				SessionStorage:        sessions.NewMemorySessionsStorage(),
 				RootLogger:            rootTestLogger,
 			})
+			ar, err := factory.NewAgentRunner(t.Context(), internal.NewAgentRunnerParams{
+				AppName:          defaultRunnerAppName,
+				AgentName:        defaultRunnerAgentName,
+				DefaultAgentName: defaultRunnerAgentName,
+				ToolsRegistry:    internal.StaticTools(nil),
+			})
+			require.NoError(t, err)
 			r := &Runner{
 				runnerFactory: factory,
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
+				agentRunner:   ar,
 			}
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -218,6 +251,7 @@ func TestRunner(t *testing.T) {
 		t.Run("returns error when model is empty", func(t *testing.T) {
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 
@@ -244,6 +278,7 @@ func TestRunner(t *testing.T) {
 			fakeG := internal.NewFakeGenkitInstance()
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 				genkitInitFunc:         fakeG.InitFunc(),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
@@ -263,6 +298,190 @@ func TestRunner(t *testing.T) {
 			require.NotNil(t, result)
 		})
 
+		t.Run("profileName regular profile uses default model", func(t *testing.T) {
+			providerName := fake.Lorem().Word()
+			modelName := fake.Lorem().Word()
+			fqModel := providerName + "/" + modelName
+			profileName := "profile-" + fake.Lorem().Word()
+			profileInstructions := fake.Lorem().Sentence(4)
+
+			providersSvc := lp.NewMockProvidersConfigService(t)
+			providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
+				Name:   providerName,
+				APIKey: fake.Lorem().Word(),
+			}, nil)
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name:         profileName,
+						Instructions: profileInstructions,
+						ExecutionSettings: ap.ExecutionSettings{
+							DefaultModel: fqModel,
+						},
+					}, nil
+				},
+			}
+
+			fakeG := internal.NewFakeGenkitInstance()
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   profilesSvc,
+				genkitInitFunc:         fakeG.InitFunc(),
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, err := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+		})
+
+		t.Run("profileName request model overrides regular profile default model", func(t *testing.T) {
+			defaultProvider := fake.Lorem().Word()
+			defaultModel := fake.Lorem().Word()
+			defaultFQModel := defaultProvider + "/" + defaultModel
+			overrideProvider := fake.Lorem().Word()
+			overrideModel := fake.Lorem().Word()
+			overrideFQModel := overrideProvider + "/" + overrideModel
+			profileName := "profile-" + fake.Lorem().Word()
+			profileInstructions := fake.Lorem().Sentence(4)
+
+			providersSvc := lp.NewMockProvidersConfigService(t)
+			providersSvc.EXPECT().Get(mock.Anything, overrideProvider).Return(&lp.ProviderConfig{
+				Name:   overrideProvider,
+				APIKey: fake.Lorem().Word(),
+			}, nil)
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return &ap.AgentProfile{
+						Name:         profileName,
+						Instructions: profileInstructions,
+						ExecutionSettings: ap.ExecutionSettings{
+							DefaultModel: defaultFQModel,
+						},
+					}, nil
+				},
+			}
+
+			fakeG := internal.NewFakeGenkitInstance()
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   profilesSvc,
+				genkitInitFunc:         fakeG.InitFunc(),
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, err := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+				Model:       overrideFQModel,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+		})
+
+		t.Run("profileName missing profile returns not found error", func(t *testing.T) {
+			profileName := "profile-" + fake.Lorem().Word()
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return nil, ap.ErrAgentProfileNotFound
+				},
+			}
+
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   profilesSvc,
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, runErr := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+			})
+
+			require.Error(t, runErr)
+			assert.Nil(t, result)
+			var profileRunErr *internal.AgentExecError
+			require.ErrorAs(t, runErr, &profileRunErr)
+			assert.Equal(t, internal.AgentExecErrorKindNotFound, profileRunErr.Kind)
+			assert.ErrorIs(t, runErr, ap.ErrAgentProfileNotFound)
+		})
+
+		t.Run("profileName lookup failure returns execution error", func(t *testing.T) {
+			profileName := "profile-" + fake.Lorem().Word()
+			expectedErr := errors.New(fake.Lorem().Sentence(4))
+
+			profilesSvc := &stubProfilesService{
+				get: func(context.Context, string) (*ap.AgentProfile, error) {
+					return nil, expectedErr
+				},
+			}
+
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
+				AgentProfilesService:   profilesSvc,
+			}, WithLogger(rootTestLogger))
+			require.NoError(t, err)
+
+			result, runErr := runner.Run(t.Context(), RunParams{
+				UserID:      fake.UUID().V4(),
+				SessionID:   fake.UUID().V4(),
+				Message:     &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				ProfileName: profileName,
+			})
+
+			require.Error(t, runErr)
+			assert.Nil(t, result)
+			var profileRunErr *internal.AgentExecError
+			require.ErrorAs(t, runErr, &profileRunErr)
+			assert.Equal(t, internal.AgentExecErrorKindExecution, profileRunErr.Kind)
+			require.ErrorIs(t, runErr, expectedErr)
+			assert.Contains(t, profileRunErr.Error(), "load-profile")
+		})
+
+		t.Run("tools registry path still resolves model and runs", func(t *testing.T) {
+			providerName := fake.Lorem().Word()
+			modelName := fake.Lorem().Word()
+			fqModel := providerName + "/" + modelName
+
+			providersSvc := lp.NewMockProvidersConfigService(t)
+			providersSvc.EXPECT().Get(mock.Anything, providerName).Return(&lp.ProviderConfig{
+				Name:   providerName,
+				APIKey: fake.Lorem().Word(),
+			}, nil)
+
+			fakeG := internal.NewFakeGenkitInstance()
+			runner, err := NewRunner(RunnerArgs{
+				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
+				genkitInitFunc:         fakeG.InitFunc(),
+			},
+				WithLogger(rootTestLogger),
+				WithToolsRegistry(NewToolsRegistry()),
+			)
+			require.NoError(t, err)
+
+			result, err := runner.Run(t.Context(), RunParams{
+				UserID:    fake.UUID().V4(),
+				SessionID: fake.UUID().V4(),
+				Message:   &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+				Model:     fqModel,
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+		})
+
 		t.Run("returns error when model provider is unknown via ModelsLocator", func(t *testing.T) {
 			providerName := fake.Lorem().Word()
 			modelName := fake.Lorem().Word()
@@ -273,6 +492,7 @@ func TestRunner(t *testing.T) {
 
 			runner, err := NewRunner(RunnerArgs{
 				ProvidersConfigService: providersSvc,
+				AgentProfilesService:   newTestProfilesService(t),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 
@@ -297,10 +517,16 @@ func TestRunner(t *testing.T) {
 				SessionStorage:        sessions.NewMemorySessionsStorage(),
 				RootLogger:            rootTestLogger,
 			})
+			ar, err := factory.NewAgentRunner(t.Context(), internal.NewAgentRunnerParams{
+				AppName:          defaultRunnerAppName,
+				AgentName:        defaultRunnerAgentName,
+				DefaultAgentName: defaultRunnerAgentName,
+				ToolsRegistry:    internal.StaticTools(nil),
+			})
+			require.NoError(t, err)
 			r := &Runner{
 				runnerFactory: factory,
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
+				agentRunner:   ar,
 			}
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -355,7 +581,6 @@ func TestRunner(t *testing.T) {
 					SessionStorage:        stor,
 					RootLogger:            rootTestLogger,
 				}),
-				toolsProvider: internal.StaticTools(nil),
 			}
 
 			result, err := r.ReadSession(ctx, ReadSessionParams{
@@ -388,7 +613,6 @@ func TestRunner(t *testing.T) {
 					SessionStorage:        sessions.NewMemorySessionsStorage(),
 					RootLogger:            rootTestLogger,
 				}),
-				toolsProvider: internal.StaticTools(nil),
 			}
 
 			result, err := r.ReadSession(ctx, ReadSessionParams{
@@ -402,18 +626,25 @@ func TestRunner(t *testing.T) {
 		t.Run("uses the same session service instance as Run", func(t *testing.T) {
 			ctx := t.Context()
 			stor := sessions.NewMemorySessionsStorage()
+			factory := internal.NewAgentRunnerFactory(internal.AgentRunnerFactoryDeps{
+				LLMAdapterFactory: func(context.Context, string) (adkModel.LLM, error) {
+					return &fakeModel{}, nil
+				},
+				LLMAgentFactory:       llmagent.New,
+				LLMAgentRunnerFactory: internal.RunExecutorFactoryFromRunner,
+				SessionStorage:        stor,
+				RootLogger:            rootTestLogger,
+			})
+			ar, err := factory.NewAgentRunner(ctx, internal.NewAgentRunnerParams{
+				AppName:          defaultRunnerAppName,
+				AgentName:        defaultRunnerAgentName,
+				DefaultAgentName: defaultRunnerAgentName,
+				ToolsRegistry:    internal.StaticTools(nil),
+			})
+			require.NoError(t, err)
 			r := &Runner{
-				runnerFactory: internal.NewAgentRunnerFactory(internal.AgentRunnerFactoryDeps{
-					LLMAdapterFactory: func(context.Context, string) (adkModel.LLM, error) {
-						return &fakeModel{}, nil
-					},
-					LLMAgentFactory:       llmagent.New,
-					LLMAgentRunnerFactory: internal.RunExecutorFactoryFromRunner,
-					SessionStorage:        stor,
-					RootLogger:            rootTestLogger,
-				}),
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
+				runnerFactory: factory,
+				agentRunner:   ar,
 			}
 
 			sessionID := fake.UUID().V4()
@@ -477,8 +708,6 @@ func TestRunner(t *testing.T) {
 					SessionStorage:        stor,
 					RootLogger:            rootTestLogger,
 				}),
-				toolsProvider: internal.StaticTools(nil),
-				rOpts:         &runnerOpts{},
 			}
 
 			result, err := r.ListSessions(ctx, ListSessionsParams{
@@ -492,6 +721,23 @@ func TestRunner(t *testing.T) {
 			assert.Equal(t, sessionID, result.Sessions[0].SessionID)
 			assert.Equal(t, title, result.Sessions[0].Title)
 			assert.Equal(t, 1, result.Total)
+		})
+	})
+
+	t.Run("ModelsLocator", func(t *testing.T) {
+		t.Run("returns nil when unset", func(t *testing.T) {
+			r := &Runner{}
+			assert.Nil(t, r.ModelsLocator())
+		})
+
+		t.Run("returns configured locator when set", func(t *testing.T) {
+			locator := &internal.ModelsLocator{}
+			r := &Runner{modelsLocator: locator}
+			got := r.ModelsLocator()
+			require.NotNil(t, got)
+			cast, ok := got.(*internal.ModelsLocator)
+			require.True(t, ok)
+			assert.Same(t, locator, cast)
 		})
 	})
 }
@@ -524,4 +770,36 @@ func (m *fakeModel) GenerateContent(
 			},
 		}, nil)
 	}
+}
+
+type stubProfilesService struct {
+	get func(ctx context.Context, name string) (*ap.AgentProfile, error)
+}
+
+func (s *stubProfilesService) List(context.Context) ([]ap.AgentProfile, error) {
+	panic("unexpected List call")
+}
+
+func (s *stubProfilesService) Get(ctx context.Context, name string) (*ap.AgentProfile, error) {
+	return s.get(ctx, name)
+}
+
+func (s *stubProfilesService) Create(context.Context, ap.CreateAgentProfileParams) (*ap.AgentProfile, error) {
+	panic("unexpected Create call")
+}
+
+func (s *stubProfilesService) Update(
+	context.Context,
+	string,
+	ap.UpdateAgentProfileParams,
+) (*ap.AgentProfile, error) {
+	panic("unexpected Update call")
+}
+
+func (s *stubProfilesService) Delete(context.Context, string) error {
+	panic("unexpected Delete call")
+}
+
+func (s *stubProfilesService) AutoMigrate() error {
+	panic("unexpected AutoMigrate call")
 }

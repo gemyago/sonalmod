@@ -155,14 +155,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/agent-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List all saved agent profiles */
+        get: operations["listAgentProfiles"];
+        put?: never;
+        /** Create a new saved agent profile */
+        post: operations["createAgentProfile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/agent-profiles/{profileName}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a saved agent profile by name */
+        get: operations["getAgentProfile"];
+        /** Update mutable fields for a saved agent profile */
+        put: operations["updateAgentProfile"];
+        post?: never;
+        /** Delete a saved agent profile by name */
+        delete: operations["deleteAgentProfile"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AgentRunRequest: {
-            message: components["schemas"]["UserMessageContent"];
-            /** @description Optional model name; empty selects the runtime default (`NewAgentRunnerParams.ModelName`). */
+            /** @description Name of the saved agent profile whose execution settings will be used for this run. */
+            profileName?: string;
+            /** @description Fully-qualified model name (`provider/model-name`) for built-in execution. Optional override for regular profiles; ignored for `acp-stdio`. */
             model?: string;
+            message: components["schemas"]["UserMessageContent"];
         };
         /** @description User message for `POST /agent-runs` / continue run: text parts (always user role; not sent by clients). */
         UserMessageContent: {
@@ -372,6 +411,89 @@ export interface components {
         ProviderListResponse: {
             providers: components["schemas"]["ProviderResponse"][];
         };
+        AgentProfileExecutionSettings: components["schemas"]["AgentProfileRegularExecutionSettings"] | components["schemas"]["AgentProfileACPStdioExecutionSettings"];
+        /** @description Runtime-owned execution defaults for built-in profile execution. */
+        AgentProfileRegularExecutionSettings: {
+            /**
+             * @description Execution mode. Omit for regular built-in execution.
+             * @enum {string}
+             */
+            mode?: "regular";
+            /** @description Fully-qualified default model in `provider/model-name` form. */
+            defaultModel: string;
+        };
+        /** @description Runtime-owned execution defaults for ACP-compatible stdio profile execution. */
+        AgentProfileACPStdioExecutionSettings: {
+            /**
+             * @description Execution mode for ACP-compatible stdio profiles.
+             * @constant
+             */
+            mode: "acp-stdio";
+            agentCommand: components["schemas"]["ACPStdioAgentCommand"];
+            /** @description Optional working directory used to launch the ACP stdio agent. */
+            cwd?: string;
+        };
+        /** @description Command defaults used to launch an ACP-compatible stdio agent. */
+        ACPStdioAgentCommand: {
+            /** @description Command executable to launch the ACP-compatible stdio agent. */
+            command: string;
+            /** @description Command arguments passed to the ACP-compatible stdio agent executable. */
+            args?: string[];
+        };
+        /** @description Request body for creating a saved agent profile. */
+        CreateAgentProfileRequest: {
+            /** @description Unique technical profile name (primary key). Immutable after creation. */
+            name: string;
+            /** @description Optional human-friendly profile label. */
+            displayName?: string;
+            /** @description Profile role describing high-level responsibility. */
+            role: string;
+            /** @description Profile-specific behavior instructions. */
+            instructions: string;
+            /** @description Tool references available to this profile. */
+            toolRefs?: string[];
+            executionSettings: components["schemas"]["AgentProfileExecutionSettings"];
+        };
+        /** @description Request body for updating a saved agent profile. `name` is immutable and not accepted here. */
+        UpdateAgentProfileRequest: {
+            /** @description Human-friendly profile label. */
+            displayName?: string;
+            /** @description Profile role describing high-level responsibility. */
+            role: string;
+            /** @description Profile-specific behavior instructions. */
+            instructions: string;
+            /** @description Tool references available to this profile. Replaces the existing list. */
+            toolRefs?: string[];
+            executionSettings: components["schemas"]["AgentProfileExecutionSettings"];
+        };
+        /** @description A saved agent profile as returned by the API. */
+        AgentProfileResponse: {
+            /** @description Unique technical profile name (primary key). */
+            name: string;
+            /** @description Human-friendly profile label (may be empty). */
+            displayName: string;
+            /** @description Profile role describing high-level responsibility. */
+            role: string;
+            /** @description Profile-specific behavior instructions. */
+            instructions: string;
+            /** @description Tool references available to this profile. */
+            toolRefs: string[];
+            executionSettings: components["schemas"]["AgentProfileExecutionSettings"];
+            /**
+             * Format: date-time
+             * @description ISO 8601 creation timestamp.
+             */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description ISO 8601 last-update timestamp.
+             */
+            updatedAt: string;
+        };
+        /** @description List of saved agent profiles. */
+        AgentProfileListResponse: {
+            profiles: components["schemas"]["AgentProfileResponse"][];
+        };
         /** @description RFC 9457 problem details (subset). */
         ProblemDetails: {
             /** Format: uri */
@@ -436,6 +558,8 @@ export interface components {
         SessionId: string;
         /** @description Unique provider name (primary key, e.g. `openai`, `openrouter`). */
         ProviderName: string;
+        /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+        ProfileName: string;
     };
     requestBodies: never;
     headers: never;
@@ -719,6 +843,137 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Provider configuration deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    listAgentProfiles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List of saved agent profiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileListResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    createAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAgentProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Agent profile created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    getAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+                profileName: components["parameters"]["ProfileName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    updateAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+                profileName: components["parameters"]["ProfileName"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAgentProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated agent profile. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProfileResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+        };
+    };
+    deleteAgentProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique profile name (primary key, e.g. `coding-agent`). */
+                profileName: components["parameters"]["ProfileName"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Agent profile deleted. */
             204: {
                 headers: {
                     [name: string]: unknown;

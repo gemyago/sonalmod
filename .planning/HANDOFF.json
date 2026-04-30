@@ -1,0 +1,54 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-22T20:50:05Z",
+  "phase": "03",
+  "phase_name": "OpenCode Coding Lane",
+  "phase_dir": ".planning/phases/03-opencode-coding-lane",
+  "plan": 3,
+  "task": 3,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "OpenCode binding contracts and persistence",
+      "status": "done",
+      "commit": "e5277f5"
+    },
+    {
+      "id": 2,
+      "name": "Validated-subset OpenCode ACP launch service",
+      "status": "done",
+      "commit": "c677d56"
+    },
+    {
+      "id": 3,
+      "name": "OpenCode runtime API exposure and app wiring",
+      "status": "done",
+      "commit": "014b49c"
+    }
+  ],
+  "remaining_tasks": [],
+  "blockers": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "Keep OpenCode integration constrained to the validated ACP subset",
+      "rationale": "Phase 1 probes established the supported request surface, and Phase 3 implemented only that slice.",
+      "phase": "03"
+    },
+    {
+      "decision": "Persist OpenCode binding defaults separately from general agent profiles",
+      "rationale": "This preserves the profile/binding boundary established in Phase 2 and keeps connection details reusable.",
+      "phase": "03"
+    },
+    {
+      "decision": "Use selector-based launch inputs instead of re-entering full config",
+      "rationale": "The app can resolve saved profile and binding state directly, which keeps the launch path lightweight.",
+      "phase": "03"
+    }
+  ],
+  "uncommitted_files": [],
+  "next_action": "After any manual code edits and validation, resume with $gsd-resume-work and start Phase 4 planning or execution from the current roadmap state.",
+  "context_notes": "Phase 3 is complete and the roadmap already points to Phase 4. This checkpoint preserves the end-of-phase-3 state before manual edits so resumption can pick up from a clean boundary."
+}

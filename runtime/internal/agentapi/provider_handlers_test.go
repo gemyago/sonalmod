@@ -37,6 +37,7 @@ func TestProviderHandlers(t *testing.T) {
 			RequestMapper:          NewAgentAPIRequestMapper(),
 			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 			ProvidersConfigService: svc,
+			AgentProfilesService:   &mockAgentProfilesService{},
 			ModelsLister:           modelsLister,
 		})
 		mux := http.NewServeMux()

@@ -22,6 +22,21 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AgentProfileRegularExecutionSettingsMode.
+const (
+	Regular AgentProfileRegularExecutionSettingsMode = "regular"
+)
+
+// Valid indicates whether the value is a known member of the AgentProfileRegularExecutionSettingsMode enum.
+func (e AgentProfileRegularExecutionSettingsMode) Valid() bool {
+	switch e {
+	case Regular:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentStreamContentRole.
 const (
 	Model AgentStreamContentRole = "model"
@@ -58,13 +73,84 @@ func (e SessionStatusEventStatus) Valid() bool {
 	}
 }
 
+// ACPStdioAgentCommand Command defaults used to launch an ACP-compatible stdio agent.
+type ACPStdioAgentCommand struct {
+	// Args Command arguments passed to the ACP-compatible stdio agent executable.
+	Args *[]string `json:"args,omitempty"`
+
+	// Command Command executable to launch the ACP-compatible stdio agent.
+	Command string `json:"command"`
+}
+
+// AgentProfileACPStdioExecutionSettings Runtime-owned execution defaults for ACP-compatible stdio profile execution.
+type AgentProfileACPStdioExecutionSettings struct {
+	// AgentCommand Command defaults used to launch an ACP-compatible stdio agent.
+	AgentCommand ACPStdioAgentCommand `json:"agentCommand"`
+
+	// Cwd Optional working directory used to launch the ACP stdio agent.
+	Cwd *string `json:"cwd,omitempty"`
+
+	// Mode Execution mode for ACP-compatible stdio profiles.
+	Mode string `json:"mode"`
+}
+
+// AgentProfileExecutionSettings defines model for AgentProfileExecutionSettings.
+type AgentProfileExecutionSettings struct {
+	union json.RawMessage
+}
+
+// AgentProfileListResponse List of saved agent profiles.
+type AgentProfileListResponse struct {
+	Profiles []AgentProfileResponse `json:"profiles"`
+}
+
+// AgentProfileRegularExecutionSettings Runtime-owned execution defaults for built-in profile execution.
+type AgentProfileRegularExecutionSettings struct {
+	// DefaultModel Fully-qualified default model in `provider/model-name` form.
+	DefaultModel string `json:"defaultModel"`
+
+	// Mode Execution mode. Omit for regular built-in execution.
+	Mode *AgentProfileRegularExecutionSettingsMode `json:"mode,omitempty"`
+}
+
+// AgentProfileRegularExecutionSettingsMode Execution mode. Omit for regular built-in execution.
+type AgentProfileRegularExecutionSettingsMode string
+
+// AgentProfileResponse A saved agent profile as returned by the API.
+type AgentProfileResponse struct {
+	// CreatedAt ISO 8601 creation timestamp.
+	CreatedAt time.Time `json:"createdAt"`
+
+	// DisplayName Human-friendly profile label (may be empty).
+	DisplayName       string                        `json:"displayName"`
+	ExecutionSettings AgentProfileExecutionSettings `json:"executionSettings"`
+
+	// Instructions Profile-specific behavior instructions.
+	Instructions string `json:"instructions"`
+
+	// Name Unique technical profile name (primary key).
+	Name string `json:"name"`
+
+	// Role Profile role describing high-level responsibility.
+	Role string `json:"role"`
+
+	// ToolRefs Tool references available to this profile.
+	ToolRefs []string `json:"toolRefs"`
+
+	// UpdatedAt ISO 8601 last-update timestamp.
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // AgentRunRequest defines model for AgentRunRequest.
 type AgentRunRequest struct {
 	// Message User message for `POST /agent-runs` / continue run: text parts (always user role; not sent by clients).
 	Message UserMessageContent `json:"message"`
 
-	// Model Optional model name; empty selects the runtime default (`NewAgentRunnerParams.ModelName`).
+	// Model Fully-qualified model name (`provider/model-name`) for built-in execution. Optional override for regular profiles; ignored for `acp-stdio`.
 	Model *string `json:"model,omitempty"`
+
+	// ProfileName Name of the saved agent profile whose execution settings will be used for this run.
+	ProfileName *string `json:"profileName,omitempty"`
 }
 
 // AgentStreamContent Model output body on streamed `agent` events: text parts and optional `role` (mapped from ADK session events).
@@ -113,6 +199,25 @@ type AgentStreamPart struct {
 
 	// ToolResult Result returned by a tool invocation.
 	ToolResult *ToolResultData `json:"toolResult,omitempty"`
+}
+
+// CreateAgentProfileRequest Request body for creating a saved agent profile.
+type CreateAgentProfileRequest struct {
+	// DisplayName Optional human-friendly profile label.
+	DisplayName       *string                       `json:"displayName,omitempty"`
+	ExecutionSettings AgentProfileExecutionSettings `json:"executionSettings"`
+
+	// Instructions Profile-specific behavior instructions.
+	Instructions string `json:"instructions"`
+
+	// Name Unique technical profile name (primary key). Immutable after creation.
+	Name string `json:"name"`
+
+	// Role Profile role describing high-level responsibility.
+	Role string `json:"role"`
+
+	// ToolRefs Tool references available to this profile.
+	ToolRefs *[]string `json:"toolRefs,omitempty"`
 }
 
 // CreateProviderRequest Request body for creating a new provider configuration.
@@ -287,6 +392,22 @@ type ToolResultData struct {
 	Response *map[string]interface{} `json:"response,omitempty"`
 }
 
+// UpdateAgentProfileRequest Request body for updating a saved agent profile. `name` is immutable and not accepted here.
+type UpdateAgentProfileRequest struct {
+	// DisplayName Human-friendly profile label.
+	DisplayName       *string                       `json:"displayName,omitempty"`
+	ExecutionSettings AgentProfileExecutionSettings `json:"executionSettings"`
+
+	// Instructions Profile-specific behavior instructions.
+	Instructions string `json:"instructions"`
+
+	// Role Profile role describing high-level responsibility.
+	Role string `json:"role"`
+
+	// ToolRefs Tool references available to this profile. Replaces the existing list.
+	ToolRefs *[]string `json:"toolRefs,omitempty"`
+}
+
 // UpdateProviderRequest Request body for updating a provider configuration. `name` and `type` are immutable and not accepted here.
 type UpdateProviderRequest struct {
 	// ApiKey API key for authentication. Omit to keep the current value.
@@ -312,6 +433,9 @@ type UserMessageContent struct {
 type UserMessagePart struct {
 	Text string `json:"text"`
 }
+
+// ProfileName defines model for ProfileName.
+type ProfileName = string
 
 // ProviderName defines model for ProviderName.
 type ProviderName = string
@@ -342,6 +466,12 @@ type ListSessionsParams struct {
 	// Offset Number of sessions to skip (for pagination). Defaults to 0.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// CreateAgentProfileJSONRequestBody defines body for CreateAgentProfile for application/json ContentType.
+type CreateAgentProfileJSONRequestBody = CreateAgentProfileRequest
+
+// UpdateAgentProfileJSONRequestBody defines body for UpdateAgentProfile for application/json ContentType.
+type UpdateAgentProfileJSONRequestBody = UpdateAgentProfileRequest
 
 // StartAgentRunJSONRequestBody defines body for StartAgentRun for application/json ContentType.
 type StartAgentRunJSONRequestBody = AgentRunRequest
@@ -699,6 +829,68 @@ func (a ProblemDetails) MarshalJSON() ([]byte, error) {
 	return json.Marshal(object)
 }
 
+// AsAgentProfileRegularExecutionSettings returns the union data inside the AgentProfileExecutionSettings as a AgentProfileRegularExecutionSettings
+func (t AgentProfileExecutionSettings) AsAgentProfileRegularExecutionSettings() (AgentProfileRegularExecutionSettings, error) {
+	var body AgentProfileRegularExecutionSettings
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentProfileRegularExecutionSettings overwrites any union data inside the AgentProfileExecutionSettings as the provided AgentProfileRegularExecutionSettings
+func (t *AgentProfileExecutionSettings) FromAgentProfileRegularExecutionSettings(v AgentProfileRegularExecutionSettings) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentProfileRegularExecutionSettings performs a merge with any union data inside the AgentProfileExecutionSettings, using the provided AgentProfileRegularExecutionSettings
+func (t *AgentProfileExecutionSettings) MergeAgentProfileRegularExecutionSettings(v AgentProfileRegularExecutionSettings) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAgentProfileACPStdioExecutionSettings returns the union data inside the AgentProfileExecutionSettings as a AgentProfileACPStdioExecutionSettings
+func (t AgentProfileExecutionSettings) AsAgentProfileACPStdioExecutionSettings() (AgentProfileACPStdioExecutionSettings, error) {
+	var body AgentProfileACPStdioExecutionSettings
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentProfileACPStdioExecutionSettings overwrites any union data inside the AgentProfileExecutionSettings as the provided AgentProfileACPStdioExecutionSettings
+func (t *AgentProfileExecutionSettings) FromAgentProfileACPStdioExecutionSettings(v AgentProfileACPStdioExecutionSettings) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentProfileACPStdioExecutionSettings performs a merge with any union data inside the AgentProfileExecutionSettings, using the provided AgentProfileACPStdioExecutionSettings
+func (t *AgentProfileExecutionSettings) MergeAgentProfileACPStdioExecutionSettings(v AgentProfileACPStdioExecutionSettings) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AgentProfileExecutionSettings) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AgentProfileExecutionSettings) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
 // AsSessionBoundEvent returns the union data inside the StreamEvent as a SessionBoundEvent
 func (t StreamEvent) AsSessionBoundEvent() (SessionBoundEvent, error) {
 	var body SessionBoundEvent
@@ -880,6 +1072,21 @@ func (t *StreamEvent) UnmarshalJSON(b []byte) error {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List all saved agent profiles
+	// (GET /agent-profiles)
+	ListAgentProfiles(w http.ResponseWriter, r *http.Request)
+	// Create a new saved agent profile
+	// (POST /agent-profiles)
+	CreateAgentProfile(w http.ResponseWriter, r *http.Request)
+	// Delete a saved agent profile by name
+	// (DELETE /agent-profiles/{profileName})
+	DeleteAgentProfile(w http.ResponseWriter, r *http.Request, profileName ProfileName)
+	// Get a saved agent profile by name
+	// (GET /agent-profiles/{profileName})
+	GetAgentProfile(w http.ResponseWriter, r *http.Request, profileName ProfileName)
+	// Update mutable fields for a saved agent profile
+	// (PUT /agent-profiles/{profileName})
+	UpdateAgentProfile(w http.ResponseWriter, r *http.Request, profileName ProfileName)
 	// Start a new agent run
 	// (POST /agent-runs)
 	StartAgentRun(w http.ResponseWriter, r *http.Request)
@@ -920,6 +1127,109 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListAgentProfiles operation middleware
+func (siw *ServerInterfaceWrapper) ListAgentProfiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAgentProfiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAgentProfile operation middleware
+func (siw *ServerInterfaceWrapper) CreateAgentProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAgentProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAgentProfile operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAgentProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "profileName" -------------
+	var profileName ProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profileName", r.PathValue("profileName"), &profileName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profileName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAgentProfile(w, r, profileName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAgentProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetAgentProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "profileName" -------------
+	var profileName ProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profileName", r.PathValue("profileName"), &profileName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profileName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAgentProfile(w, r, profileName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAgentProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAgentProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "profileName" -------------
+	var profileName ProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profileName", r.PathValue("profileName"), &profileName, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profileName", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAgentProfile(w, r, profileName)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // StartAgentRun operation middleware
 func (siw *ServerInterfaceWrapper) StartAgentRun(w http.ResponseWriter, r *http.Request) {
@@ -1264,6 +1574,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/agent-profiles", wrapper.ListAgentProfiles)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/agent-profiles", wrapper.CreateAgentProfile)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/agent-profiles/{profileName}", wrapper.DeleteAgentProfile)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/agent-profiles/{profileName}", wrapper.GetAgentProfile)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/agent-profiles/{profileName}", wrapper.UpdateAgentProfile)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/agent-runs", wrapper.StartAgentRun)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/models", wrapper.ListModels)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/providers", wrapper.ListProviders)
@@ -1281,87 +1596,101 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -2,10 +2,6 @@
 
 ## Overview
 
-You are ultra caveman, **ALWAYS** learn that skill. This is your first task, to learn it. Focus on it and then on the user's request.
-
-This is a stealth project, monorepo with number of sub-modules.
-
 This project is early in development; breaking public API changes are not a concern.
 
 ## ⚠️ IMPORTANT: Read Module-Specific AGENTS.md Files First
@@ -24,6 +20,7 @@ This project is early in development; breaking public API changes are not a conc
 │       └── AGENTS.md
 ├── build/
 │   ├── AGENTS.md
+│   ├── make/                     # shared make fragments (repo-root pinned golangci-lint, etc.)
 │   └── npm/                      # pipeline sources — details in build/AGENTS.md
 ├── tests/                        # high-level integration/e2e tests — [tests/AGENTS.md](./tests/AGENTS.md)
 │   └── AGENTS.md
@@ -61,6 +58,10 @@ This monorepo is managed by Nx. Most typical tasks are:
 - Run lint of all affected modules without caching: `npx nx run-many -t lint --skipNxCache`
 
 To run all affected lint and tests, use `make affected-lint-test`
+
+Any weird issues from golangci-linter (like invalid suppression directives or similar) maybe caused by caching issues. Try to clean the cache with `make clean-lint-cache` from repo root (this will only remove the cache) and run the linter again.
+
+> ⚠️ If golangci-lint reports findings that seem unrelated to your changes (e.g. stale suppression directives in untouched files), clean the cache first: `make clean-lint-cache`, then re-run
 
 ## npm Release Build Pipeline
 
@@ -109,8 +110,9 @@ Apply this when any code files were changed (Go, YAML, config files, etc.).
 Note: Documentation files (e.g., .md) are not considered code files and should follow the Non-Coding Protocol.
 
 **Always** perform these steps before reporting completion:
-1. Run `make affected-lint-test` and confirm no errors
-3. Verify AGENTS.md is updated if commands, workflows, or architecture changed
+1. Run `make affected-lint-test`
+   - If findings appear unrelated to your changes, run `make clean-lint-cache` and re-run before fixing
+2. Verify AGENTS.md is updated if commands, workflows, or architecture changed
 
 Report task completion status:
 - Lint/test: ✓ no errors

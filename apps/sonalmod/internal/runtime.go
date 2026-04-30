@@ -53,6 +53,11 @@ type Runtime struct {
 	ToolsRegistry *agent.ToolsRegistry
 }
 
+type runtimeServices struct {
+	providersConfigSvc agent.ProvidersConfigService
+	agentProfilesSvc   agent.AgentProfilesService
+}
+
 func newProvidersConfigService(deps RuntimeDeps) (agent.ProvidersConfigService, error) { //nolint:ireturn
 	if deps.AgentRuntimeStorageType == storageTypeDatabase {
 		svc, err := agent.NewDatabaseProvidersConfigService(
@@ -70,6 +75,56 @@ func newProvidersConfigService(deps RuntimeDeps) (agent.ProvidersConfigService, 
 		return nil, fmt.Errorf("create providers config service: %w", err)
 	}
 	return svc, nil
+}
+
+func newAgentProfilesService(deps RuntimeDeps) (agent.AgentProfilesService, error) { //nolint:ireturn
+	if deps.AgentRuntimeStorageType == storageTypeDatabase {
+		svc, err := agent.NewDatabaseAgentProfilesService(
+			deps.AgentRuntimeDatabaseDSN,
+			deps.RootLogger,
+			deps.AgentRuntimeDatabaseTablePrefix,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("create database agent profiles service: %w", err)
+		}
+		return svc, nil
+	}
+
+	svc, err := agent.NewFileAgentProfilesService(deps.DataDir, deps.RootLogger)
+	if err != nil {
+		return nil, fmt.Errorf("create agent profiles service: %w", err)
+	}
+	return svc, nil
+}
+
+func autoMigrateRuntimeServices(
+	runner *agent.Runner,
+	agentProfilesSvc agent.AgentProfilesService,
+) error {
+	if err := runner.AutoMigrate(); err != nil {
+		return fmt.Errorf("auto migrate database: %w", err)
+	}
+	if err := agentProfilesSvc.AutoMigrate(); err != nil {
+		return fmt.Errorf("auto migrate agent profiles database: %w", err)
+	}
+	return nil
+}
+
+func newRuntimeServices(deps RuntimeDeps) (*runtimeServices, error) {
+	providersSvc, err := newProvidersConfigService(deps)
+	if err != nil {
+		return nil, err
+	}
+
+	agentProfilesSvc, err := newAgentProfilesService(deps)
+	if err != nil {
+		return nil, err
+	}
+
+	return &runtimeServices{
+		providersConfigSvc: providersSvc,
+		agentProfilesSvc:   agentProfilesSvc,
+	}, nil
 }
 
 func registerRuntime(container *dig.Container) error {
@@ -105,7 +160,7 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 		return nil, fmt.Errorf("register workspacefs tools: %w", err)
 	}
 
-	providersSvc, err := newProvidersConfigService(deps)
+	services, err := newRuntimeServices(deps)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +192,8 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 
 	runner, err := agent.NewRunner(
 		agent.RunnerArgs{
-			ProvidersConfigService: providersSvc,
+			ProvidersConfigService: services.providersConfigSvc,
+			AgentProfilesService:   services.agentProfilesSvc,
 		},
 		runnerOpts...,
 	)
@@ -146,14 +202,18 @@ func newRuntime(deps RuntimeDeps) (*Runtime, error) {
 	}
 
 	if deps.AgentRuntimeStorageType == storageTypeDatabase && deps.AgentRuntimeDatabaseAutoMigrate {
-		if err = runner.AutoMigrate(); err != nil {
-			return nil, fmt.Errorf("auto migrate database: %w", err)
+		if err = autoMigrateRuntimeServices(
+			runner,
+			services.agentProfilesSvc,
+		); err != nil {
+			return nil, err
 		}
 	}
 
 	httpHandler, err := httpapi.NewHandler(httpapi.HandlerArgs{
 		Runner:                 runner,
-		ProvidersConfigService: providersSvc,
+		ProvidersConfigService: services.providersConfigSvc,
+		AgentProfilesService:   services.agentProfilesSvc,
 		ModelsLister:           runner.ModelsLocator(),
 	}, httpapi.WithLogger(deps.RootLogger))
 	if err != nil {

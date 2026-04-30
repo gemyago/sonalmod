@@ -71,6 +71,7 @@ More detail is in **Testing best practices** below. Common points:
 - **Avoid splitting one behavior across many tests** — one behavior, one clear story when possible.
 - **Test behavior, not implementation** — observable outcomes over internal structure.
 - **Avoid** testing framework internals or standard library functions.
+- Test only logic that exists in the component if mocked dependencies are used
 
 If project documents specific mocking strategy, follow it. If you have to create mock manually, follow these principles:
 

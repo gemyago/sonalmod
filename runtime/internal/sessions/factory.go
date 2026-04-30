@@ -40,44 +40,46 @@ func NewSessionsStorage(
 	*MetadataSyncStorage,
 	error,
 ) {
-	raw, err := newRawSessionsStorage(deps)
-	if err != nil {
-		return nil, err
-	}
-	return NewMetadataSyncStorage(raw, deps.Summarizer, deps.RootLogger), nil
-}
-
-// newRawSessionsStorage selects the concrete [SessionsStorage] implementation from configuration.
-// It returns the interface because the backend type is chosen at runtime (file, database, or memory).
-func newRawSessionsStorage( //nolint:ireturn // polymorphic factory; multiple concrete backends
-	deps SessionServiceFactoryDeps,
-) (
-	SessionsStorage,
-	error,
-) {
+	var (
+		raw SessionsStorage
+		err error
+	)
 	if deps.UseDatabaseStorage {
-		return NewDatabaseSessionsStorage(deps.DatabaseDSN, gormsonal.GormSonalmodTablesOpts{
+		raw, err = NewDatabaseSessionsStorage(deps.DatabaseDSN, gormsonal.GormSonalmodTablesOpts{
 			TablePrefix: deps.DatabaseTablePrefix,
 		})
+		if err != nil {
+			return nil, err
+		}
+		return NewMetadataSyncStorage(raw, deps.Summarizer, deps.RootLogger), nil
 	}
 	if deps.UseFileStorage {
-		return NewFileSessionsStorage(deps.SessionStorageBaseDir, deps.RootLogger)
+		raw, err = NewFileSessionsStorage(deps.SessionStorageBaseDir, deps.RootLogger)
+		if err != nil {
+			return nil, err
+		}
+		return NewMetadataSyncStorage(raw, deps.Summarizer, deps.RootLogger), nil
 	}
 
-	t := strings.TrimSpace(strings.ToLower(deps.SessionStorageType))
-	switch t {
+	switch t := strings.TrimSpace(strings.ToLower(deps.SessionStorageType)); t {
 	case "", sessionStorageTypeMemory:
-		return NewMemorySessionsStorage(), nil
+		raw = NewMemorySessionsStorage()
 	case sessionStorageTypeDatabase:
-		return NewDatabaseSessionsStorage(deps.DatabaseDSN, gormsonal.GormSonalmodTablesOpts{
+		raw, err = NewDatabaseSessionsStorage(deps.DatabaseDSN, gormsonal.GormSonalmodTablesOpts{
 			TablePrefix: deps.DatabaseTablePrefix,
 		})
 	case sessionStorageTypeFile:
-		return NewFileSessionsStorage(deps.SessionStorageBaseDir, deps.RootLogger)
+		raw, err = NewFileSessionsStorage(deps.SessionStorageBaseDir, deps.RootLogger)
 	default:
 		return nil, fmt.Errorf(
 			"agentRuntime.storage.type: unsupported value %q (use %q, %q, or %q)",
 			t, sessionStorageTypeMemory, sessionStorageTypeFile, sessionStorageTypeDatabase,
 		)
 	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return NewMetadataSyncStorage(raw, deps.Summarizer, deps.RootLogger), nil
 }

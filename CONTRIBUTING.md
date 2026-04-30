@@ -11,6 +11,15 @@ Please have the following tools installed:
 
 [OpenSpec](https://github.com/fission-ai/openspec) - good for structured flow. Use `openspec init`. Not committing to the repo for now.
 
+[GSD](https://github.com/gsd-build/get-shit-done) - not sure if it will stick around, but for now it is what we use:
+```sh
+# Use your agent if needed
+npx get-shit-done-cc@latest --local --codex --opencode
+```
+
+Also tried:
+- BMAD - very complex, so we skipped it for now.
+
 ## Product Docs
 
 Canonical domain vocabulary for planning, design, and copy: [docs/domain-terminology.md](./docs/domain-terminology.md).
@@ -78,7 +87,13 @@ go run ./cmd/sonalmod start
 cd apps/sonal-ui
 npm i
 npm run dev
+
+# Start everything in one terminal
+nx run-many -t dev
 ```
+
+Frontend host/port: http://localhost:5173
+Backend host/port: http://localhost:8080
 
 ### Combined local mode (backend serves built UI)
 

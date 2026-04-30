@@ -8,6 +8,7 @@ import (
 
 	"github.com/firebase/genkit/go/genkit"
 	"github.com/gemyago/sonalmod/runtime/internal"
+	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/gemyago/sonalmod/runtime/internal/summarize"
@@ -37,6 +38,8 @@ var _ internal.ToolsProvider = (*toolsRegistryProvider)(nil)
 type RunnerArgs struct {
 	// ProvidersConfigService is required. NewRunner wires a ModelsLocator for LLM resolution.
 	ProvidersConfigService ProvidersConfigService
+	// AgentProfilesService is required. NewRunner wires profile-backed execution from it.
+	AgentProfilesService AgentProfilesService
 
 	// genkitInitFunc overrides the genkit initialization function used by ModelsLocator.
 	// Intended for tests only; production code leaves this nil.
@@ -118,15 +121,17 @@ func WithSystemPromptFragments(fragments ...SystemPromptFragment) RunnerOpt {
 
 type Runner struct {
 	runnerFactory   *internal.AgentRunnerFactory
-	toolsProvider   internal.ToolsProvider
-	rOpts           *runnerOpts
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
+	agentRunner     *internal.AgentRunner
 }
 
 func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 	if args.ProvidersConfigService == nil {
 		return nil, errors.New("providers config service is required")
+	}
+	if args.AgentProfilesService == nil {
+		return nil, errors.New("agent profiles service is required")
 	}
 
 	rOpts := &runnerOpts{
@@ -136,7 +141,7 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		opt(rOpts)
 	}
 
-	toolsProvider := internal.StaticTools(nil)
+	var toolsProvider internal.ToolsProvider = internal.StaticTools(nil)
 	if rOpts.toolsRegistry != nil {
 		toolsProvider = &toolsRegistryProvider{reg: rOpts.toolsRegistry}
 	}
@@ -183,29 +188,42 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		RootLogger:            rOpts.logger,
 	})
 
-	return &Runner{
+	acpProfileRun, err := acpstdio.NewACPProfileRunner(acpstdio.NewACPProfileRunnerParams{
+		AppName:        defaultRunnerAppName,
+		SessionStorage: ss,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ACP profile runner: %w", err)
+	}
+
+	agentRunner, err := runnerFactory.NewAgentRunner(context.Background(), internal.NewAgentRunnerParams{
+		AppName:               defaultRunnerAppName,
+		AgentName:             defaultRunnerAgentName,
+		DefaultAgentName:      defaultRunnerAgentName,
+		SystemPromptFragments: rOpts.systemPromptFragments,
+		ToolsRegistry:         toolsProvider,
+		ModelName:             "",
+		ProfilesService:       args.AgentProfilesService,
+		ACPProfileExecutor:    acpProfileRun,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("agent runner: %w", err)
+	}
+
+	r := &Runner{
 		runnerFactory:   runnerFactory,
-		toolsProvider:   toolsProvider,
-		rOpts:           rOpts,
 		sessionsStorage: ss,
 		modelsLocator:   modelsLocator,
-	}, nil
+		agentRunner:     agentRunner,
+	}
+
+	return r, nil
 }
 
 const (
 	defaultRunnerAppName   = "sonalmod-runtime"
 	defaultRunnerAgentName = "sonalmod"
 )
-
-func (r *Runner) newAgentRunnerParams(modelName string) internal.NewAgentRunnerParams {
-	return internal.NewAgentRunnerParams{
-		AppName:               defaultRunnerAppName,
-		AgentName:             defaultRunnerAgentName,
-		SystemPromptFragments: r.rOpts.systemPromptFragments,
-		ToolsRegistry:         r.toolsProvider,
-		ModelName:             modelName,
-	}
-}
 
 // AutoMigrate runs schema migrations for database-backed session storage when configured.
 // It is a no-op when file or in-memory storage is in use.
@@ -224,14 +242,11 @@ func (r *Runner) ModelsLocator() ModelsLister { //nolint:ireturn
 }
 
 func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
-	if params.Model == "" {
-		return nil, errors.New("model is required")
+	if r.agentRunner == nil {
+		return nil, errors.New("execution runner is required")
 	}
-	ar, err := r.runnerFactory.NewAgentRunner(ctx, r.newAgentRunnerParams(params.Model))
-	if err != nil {
-		return nil, err
-	}
-	return ar.Run(ctx, params)
+
+	return r.agentRunner.Run(ctx, params)
 }
 
 // ReadSession reads the events for a session from the configured session service.

@@ -24,6 +24,8 @@ tags:
     description: List and inspect chat sessions
   - name: Providers
     description: Manage LLM provider configurations (CRUD)
+  - name: Agent profiles
+    description: Manage saved agent profile configurations (CRUD)
   - name: Models
     description: List available models across all configured providers
 
@@ -340,6 +342,114 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /agent-profiles:
+    get:
+      tags: [Agent profiles]
+      operationId: listAgentProfiles
+      summary: List all saved agent profiles
+      responses:
+        '200':
+          description: List of saved agent profiles.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfileListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Agent profiles]
+      operationId: createAgentProfile
+      summary: Create a new saved agent profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentProfileRequest'
+      responses:
+        '201':
+          description: Agent profile created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /agent-profiles/{profileName}:
+    get:
+      tags: [Agent profiles]
+      operationId: getAgentProfile
+      summary: Get a saved agent profile by name
+      parameters:
+        - $ref: '#/components/parameters/ProfileName'
+      responses:
+        '200':
+          description: Agent profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Agent profiles]
+      operationId: updateAgentProfile
+      summary: Update mutable fields for a saved agent profile
+      parameters:
+        - $ref: '#/components/parameters/ProfileName'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentProfileRequest'
+      responses:
+        '200':
+          description: Updated agent profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Agent profiles]
+      operationId: deleteAgentProfile
+      summary: Delete a saved agent profile by name
+      parameters:
+        - $ref: '#/components/parameters/ProfileName'
+      responses:
+        '204':
+          description: Agent profile deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
 components:
   parameters:
     SessionId:
@@ -360,16 +470,30 @@ components:
         type: string
         minLength: 1
 
+    ProfileName:
+      name: profileName
+      in: path
+      required: true
+      description: Unique profile name (primary key, e.g. `coding-agent`).
+      schema:
+        type: string
+        minLength: 1
+
   schemas:
     AgentRunRequest:
       type: object
       required: [message]
       properties:
-        message:
-          $ref: '#/components/schemas/UserMessageContent'
+        profileName:
+          type: string
+          minLength: 1
+          description: Name of the saved agent profile whose execution settings will be used for this run.
         model:
           type: string
-          description: Optional model name; empty selects the runtime default (`NewAgentRunnerParams.ModelName`).
+          minLength: 1
+          description: Fully-qualified model name (`provider/model-name`) for built-in execution. Optional override for regular profiles; ignored for `acp-stdio`.
+        message:
+          $ref: '#/components/schemas/UserMessageContent'
       additionalProperties: false
 
     UserMessageContent:
@@ -737,6 +861,169 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ProviderResponse'
+      additionalProperties: false
+
+    AgentProfileExecutionSettings:
+      oneOf:
+        - $ref: '#/components/schemas/AgentProfileRegularExecutionSettings'
+        - $ref: '#/components/schemas/AgentProfileACPStdioExecutionSettings'
+
+    AgentProfileRegularExecutionSettings:
+      type: object
+      description: Runtime-owned execution defaults for built-in profile execution.
+      required: [defaultModel]
+      properties:
+        mode:
+          type: string
+          enum: [regular]
+          description: Execution mode. Omit for regular built-in execution.
+        defaultModel:
+          type: string
+          description: Fully-qualified default model in `provider/model-name` form.
+          minLength: 1
+      additionalProperties: false
+
+    AgentProfileACPStdioExecutionSettings:
+      type: object
+      description: Runtime-owned execution defaults for ACP-compatible stdio profile execution.
+      required: [mode, agentCommand]
+      properties:
+        mode:
+          type: string
+          const: acp-stdio
+          description: Execution mode for ACP-compatible stdio profiles.
+        agentCommand:
+          $ref: '#/components/schemas/ACPStdioAgentCommand'
+        cwd:
+          type: string
+          description: Optional working directory used to launch the ACP stdio agent.
+      additionalProperties: false
+
+    ACPStdioAgentCommand:
+      type: object
+      description: Command defaults used to launch an ACP-compatible stdio agent.
+      required: [command]
+      properties:
+        command:
+          type: string
+          minLength: 1
+          description: Command executable to launch the ACP-compatible stdio agent.
+        args:
+          type: array
+          description: Command arguments passed to the ACP-compatible stdio agent executable.
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+      additionalProperties: false
+
+    CreateAgentProfileRequest:
+      type: object
+      description: Request body for creating a saved agent profile.
+      required: [name, role, instructions, executionSettings]
+      properties:
+        name:
+          type: string
+          description: Unique technical profile name (primary key). Immutable after creation.
+          minLength: 1
+        displayName:
+          type: string
+          description: Optional human-friendly profile label.
+        role:
+          type: string
+          description: Profile role describing high-level responsibility.
+          minLength: 1
+        instructions:
+          type: string
+          description: Profile-specific behavior instructions.
+          minLength: 1
+        toolRefs:
+          type: array
+          description: Tool references available to this profile.
+          items:
+            type: string
+            minLength: 1
+        executionSettings:
+          $ref: '#/components/schemas/AgentProfileExecutionSettings'
+      additionalProperties: false
+
+    UpdateAgentProfileRequest:
+      type: object
+      description: Request body for updating a saved agent profile. `name` is immutable and not accepted here.
+      required: [role, instructions, executionSettings]
+      properties:
+        displayName:
+          type: string
+          description: Human-friendly profile label.
+        role:
+          type: string
+          description: Profile role describing high-level responsibility.
+          minLength: 1
+        instructions:
+          type: string
+          description: Profile-specific behavior instructions.
+          minLength: 1
+        toolRefs:
+          type: array
+          description: Tool references available to this profile. Replaces the existing list.
+          items:
+            type: string
+            minLength: 1
+        executionSettings:
+          $ref: '#/components/schemas/AgentProfileExecutionSettings'
+      additionalProperties: false
+
+    AgentProfileResponse:
+      type: object
+      description: A saved agent profile as returned by the API.
+      required:
+        - name
+        - displayName
+        - role
+        - instructions
+        - toolRefs
+        - executionSettings
+        - createdAt
+        - updatedAt
+      properties:
+        name:
+          type: string
+          description: Unique technical profile name (primary key).
+        displayName:
+          type: string
+          description: Human-friendly profile label (may be empty).
+        role:
+          type: string
+          description: Profile role describing high-level responsibility.
+        instructions:
+          type: string
+          description: Profile-specific behavior instructions.
+        toolRefs:
+          type: array
+          description: Tool references available to this profile.
+          items:
+            type: string
+        executionSettings:
+          $ref: '#/components/schemas/AgentProfileExecutionSettings'
+        createdAt:
+          type: string
+          format: date-time
+          description: ISO 8601 creation timestamp.
+        updatedAt:
+          type: string
+          format: date-time
+          description: ISO 8601 last-update timestamp.
+      additionalProperties: false
+
+    AgentProfileListResponse:
+      type: object
+      description: List of saved agent profiles.
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentProfileResponse'
       additionalProperties: false
 
     ProblemDetails:

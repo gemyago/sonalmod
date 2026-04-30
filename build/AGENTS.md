@@ -2,9 +2,17 @@
 
 ## Overview
 
-**Active.** This folder holds the **local-first npm release build pipeline** (Make + bash). All orchestration lives under **`npm/`**; CI runs the same targets as developers.
+**Active.** This folder holds shared build infrastructure. The main release pipeline lives under **`npm/`** and shared make fragments live under **`make/`**; CI runs the same targets as developers.
 
-## Layout (`build/npm/`)
+## Layout
+
+### `build/make/`
+
+| Path | Role |
+|------|------|
+| `golangci-lint.mk` | Shared repo-root pinned `golangci-lint` install/rule fragment reused by Go-module Makefiles; exports per-module cache paths under `.cache/golangci-lint/` |
+
+### `build/npm/`
 
 | Path | Role |
 |------|------|

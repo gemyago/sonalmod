@@ -36,12 +36,10 @@ type MeterProviderDeps struct {
 }
 
 // NewMeterProvider creates a new MeterProvider suitable for the given configuration.
-//
-//nolint:ireturn // OpenTelemetry MeterProvider factory
-func NewMeterProvider(
+func NewMeterProvider( //nolint:ireturn
 	ctx context.Context,
 	deps MeterProviderDeps,
-) (metric.MeterProvider, error) { // coverage-ignore -- Little value in testing this factory function
+) (metric.MeterProvider, error) {
 	metricsConfig := deps.MetricsConfig
 	res := deps.Resource
 

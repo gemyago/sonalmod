@@ -36,6 +36,7 @@ func TestSessionHandlers(t *testing.T) {
 			RequestMapper:          NewAgentAPIRequestMapper(),
 			SSEWriter:              NewAgentAPISSEWriter(NewAgentAPIStreamEventMapper()),
 			ProvidersConfigService: llmproviders.NewMockProvidersConfigService(t),
+			AgentProfilesService:   &mockAgentProfilesService{},
 		})
 		mux := http.NewServeMux()
 		return HandlerFromMux(srv, mux)

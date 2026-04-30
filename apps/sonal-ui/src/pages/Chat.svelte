@@ -306,12 +306,10 @@
 
     const sessionId = effectiveSessionId()
     runOwningSessionId = sessionId
-    // userId omitted: auth middleware provides CallerIdentity from the Bearer token.
-    // The spec still carries userId as required (removed in Task 5.1); cast is intentional.
-    const body = {
-      message: { parts: [{ text }] },
+    const body: AgentRunRequest = {
       model: selectedModel,
-    } as AgentRunRequest
+      message: { parts: [{ text }] },
+    }
 
     messages = [...messages, { role: 'user', text }]
     inputText = ''

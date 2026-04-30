@@ -36,6 +36,15 @@ func TestNewRuntime(t *testing.T) {
 		}
 	}
 
+	makeDatabaseDeps := func(t *testing.T) RuntimeDeps {
+		t.Helper()
+		deps := makeDeps(t)
+		deps.AgentRuntimeStorageType = storageTypeDatabase
+		deps.AgentRuntimeDatabaseDSN = filepath.Join(t.TempDir(), "runtime.db")
+		deps.AgentRuntimeDatabaseTablePrefix = "runtime_"
+		return deps
+	}
+
 	// makeSkillDir creates a valid skill directory with a SKILL.md inside parentDir.
 	// Returns the skill name (== dir name).
 	makeSkillDir := func(t *testing.T, parentDir string) string {
@@ -49,17 +58,7 @@ func TestNewRuntime(t *testing.T) {
 	}
 
 	t.Run("creates runtime with non-nil runner and http handler", func(t *testing.T) {
-		runtime, err := newRuntime(makeDeps(t))
-		require.NoError(t, err)
-		require.NotNil(t, runtime)
-		assert.NotNil(t, runtime.Runner)
-		assert.NotNil(t, runtime.HTTPHandler)
-	})
-
-	t.Run("database storage - creates runtime with database backend", func(t *testing.T) {
 		deps := makeDeps(t)
-		deps.AgentRuntimeStorageType = "database"
-		deps.AgentRuntimeDatabaseDSN = ":memory:"
 		runtime, err := newRuntime(deps)
 		require.NoError(t, err)
 		require.NotNil(t, runtime)
@@ -67,16 +66,45 @@ func TestNewRuntime(t *testing.T) {
 		assert.NotNil(t, runtime.HTTPHandler)
 	})
 
+	t.Run("database storage - creates runtime with database backend and migrates profiles", func(t *testing.T) {
+		deps := makeDatabaseDeps(t)
+		runtime, err := newRuntime(deps)
+		require.NoError(t, err)
+		require.NotNil(t, runtime)
+		assert.NotNil(t, runtime.Runner)
+		assert.NotNil(t, runtime.HTTPHandler)
+
+		profilesSvc, err := agent.NewDatabaseAgentProfilesService(
+			deps.AgentRuntimeDatabaseDSN,
+			rootLogger,
+			deps.AgentRuntimeDatabaseTablePrefix,
+		)
+		require.NoError(t, err)
+
+		profiles, err := profilesSvc.List(t.Context())
+		require.NoError(t, err)
+		require.Empty(t, profiles)
+	})
+
 	t.Run("database storage - autoMigrate disabled still constructs runtime", func(t *testing.T) {
-		deps := makeDeps(t)
-		deps.AgentRuntimeStorageType = "database"
-		deps.AgentRuntimeDatabaseDSN = ":memory:"
+		deps := makeDatabaseDeps(t)
 		deps.AgentRuntimeDatabaseAutoMigrate = false
 		runtime, err := newRuntime(deps)
 		require.NoError(t, err)
 		require.NotNil(t, runtime)
 		assert.NotNil(t, runtime.Runner)
 		assert.NotNil(t, runtime.HTTPHandler)
+
+		profilesSvc, err := agent.NewDatabaseAgentProfilesService(
+			deps.AgentRuntimeDatabaseDSN,
+			rootLogger,
+			deps.AgentRuntimeDatabaseTablePrefix,
+		)
+		require.NoError(t, err)
+
+		_, err = profilesSvc.List(t.Context())
+		require.Error(t, err)
+		require.ErrorContains(t, err, "no such table")
 	})
 
 	t.Run("http handler is wired with background runner", func(t *testing.T) {

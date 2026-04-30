@@ -103,6 +103,48 @@ func setupCommands() *cobra.Command {
 	}
 	rootCmd.AddCommand(listModelsCmd)
 
+	acpArgs := &acpCmdArgs{}
+	acpCmd := &cobra.Command{
+		Use:   "acp",
+		Short: "Probe an ACP-compatible agent over stdio JSON-RPC",
+		RunE:  buildACPFunc(acpArgs),
+	}
+	acpCmd.Flags().StringVar(
+		&acpArgs.AgentCommand,
+		"agent-command",
+		"",
+		"Agent executable to run (for example: opencode)",
+	)
+	acpCmd.Flags().StringArrayVar(
+		&acpArgs.AgentArgs,
+		"agent-arg",
+		nil,
+		"Argument to pass to the agent command (repeatable)",
+	)
+	acpCmd.Flags().StringVar(&acpArgs.CWD, "cwd", "", "Working directory for the ACP agent process")
+	acpCmd.Flags().StringVarP(&acpArgs.Prompt, "prompt", "p", "", "Prompt to send via session/prompt")
+	acpCmd.Flags().StringVar(
+		&acpArgs.TranscriptPath,
+		"transcript",
+		"",
+		"Optional JSONL transcript path for ACP envelopes",
+	)
+	acpCmd.Flags().StringVar(
+		&acpArgs.LoadSessionID,
+		"load-session",
+		"",
+		"Optional session ID to load instead of creating a new one",
+	)
+	acpCmd.Flags().DurationVar(
+		&acpArgs.CancelAfter,
+		"cancel-after",
+		0,
+		"Optional delay before sending session/cancel",
+	)
+	lo.Must0(acpCmd.MarkFlagRequired("agent-command"))
+	lo.Must0(acpCmd.MarkFlagRequired("prompt"))
+	rootCmd.AddCommand(acpCmd)
+
 	return rootCmd
 }
 

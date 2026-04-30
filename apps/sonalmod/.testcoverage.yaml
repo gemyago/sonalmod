@@ -27,6 +27,10 @@ exclude:
     - mock_.*.go
     - mock_*.go
     - mock.go
+    - internal/telemetry/otel.go
+    - internal/telemetry/otel_logger.go
+    - internal/telemetry/otel_meter.go
+    - internal/telemetry/otel_tracer.go
     - register.go # Dependency injection setup
     - internal/wireup.go # Root [internal.Setup] orchestration (Load error branch rarely exercised)
     - cmd/sonalmod/engine_cmd.go # Cobra persistent flag glue to [sonalmod.NewEngine]

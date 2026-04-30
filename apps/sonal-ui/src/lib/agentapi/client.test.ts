@@ -17,8 +17,9 @@ describe('createSonalAgentApi / streaming and providers (MSW)', () => {
     sessionIdForStream: string
   } {
     const sampleBody = {
+      model: `${faker.word.noun().toLowerCase()}/${faker.word.noun().toLowerCase()}`,
       message: { parts: [{ text: faker.lorem.sentence() }] },
-    } as AgentRunRequest
+    } satisfies AgentRunRequest
     const sessionIdForStream = faker.string.uuid()
     const partialText = faker.lorem.word()
     const fullText = `${partialText}, ${faker.lorem.words(2)}`
