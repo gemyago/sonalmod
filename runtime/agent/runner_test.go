@@ -193,26 +193,16 @@ func TestRunner(t *testing.T) {
 		})
 
 		t.Run("empty sessionID returns error", func(t *testing.T) {
-			prov := fake.Lorem().Word()
-			mod := fake.Lorem().Word()
-			fq := prov + "/" + mod
-			providersSvc := lp.NewMockProvidersConfigService(t)
-			providersSvc.EXPECT().Get(mock.Anything, prov).Return(&lp.ProviderConfig{
-				Name:   prov,
-				APIKey: fake.Lorem().Word(),
-			}, nil)
-			fakeG := internal.NewFakeGenkitInstance()
 			runner, err := NewRunner(RunnerArgs{
-				ProvidersConfigService: providersSvc,
+				ProvidersConfigService: lp.NewMockProvidersConfigService(t),
 				AgentProfilesService:   newTestProfilesService(t),
-				genkitInitFunc:         fakeG.InitFunc(),
 			}, WithLogger(rootTestLogger))
 			require.NoError(t, err)
 
 			_, err = runner.Run(t.Context(), RunParams{
 				UserID:    fake.UUID().V4(),
 				SessionID: "",
-				Model:     fq,
+				Model:     fake.Lorem().Word() + "/" + fake.Lorem().Word(),
 				Message:   &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Word()}}},
 			})
 			require.Error(t, err)
@@ -232,23 +222,16 @@ func TestRunner(t *testing.T) {
 				SessionStorage:        sessions.NewMemorySessionsStorage(),
 				RootLogger:            rootTestLogger,
 			})
+			ar, err := factory.NewAgentRunner(t.Context(), internal.NewAgentRunnerParams{
+				AppName:          defaultRunnerAppName,
+				AgentName:        defaultRunnerAgentName,
+				DefaultAgentName: defaultRunnerAgentName,
+				ToolsRegistry:    internal.StaticTools(nil),
+			})
+			require.NoError(t, err)
 			r := &Runner{
 				runnerFactory: factory,
-				executionRunner: internal.NewProfileExecutionRunner(
-					internal.ProfileExecutionRunnerParams{
-						NewAgentRunner: func(
-							ctx context.Context,
-							params internal.NewAgentRunnerParams,
-						) (internal.ProfileAgentRunner, error) {
-							return factory.NewAgentRunner(ctx, params)
-						},
-						ToolsProvider:      internal.StaticTools(nil),
-						AppName:            defaultRunnerAppName,
-						DefaultAgentName:   defaultRunnerAgentName,
-						ProfilesService:    nil,
-						ACPProfileExecutor: nil,
-					},
-				),
+				agentRunner:   ar,
 			}
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -535,21 +518,16 @@ func TestRunner(t *testing.T) {
 				SessionStorage:        sessions.NewMemorySessionsStorage(),
 				RootLogger:            rootTestLogger,
 			})
+			ar, err := factory.NewAgentRunner(t.Context(), internal.NewAgentRunnerParams{
+				AppName:          defaultRunnerAppName,
+				AgentName:        defaultRunnerAgentName,
+				DefaultAgentName: defaultRunnerAgentName,
+				ToolsRegistry:    internal.StaticTools(nil),
+			})
+			require.NoError(t, err)
 			r := &Runner{
 				runnerFactory: factory,
-				executionRunner: internal.NewProfileExecutionRunner(
-					internal.ProfileExecutionRunnerParams{
-						NewAgentRunner: func(
-							ctx context.Context,
-							params internal.NewAgentRunnerParams,
-						) (internal.ProfileAgentRunner, error) {
-							return factory.NewAgentRunner(ctx, params)
-						},
-						ToolsProvider:    internal.StaticTools(nil),
-						AppName:          defaultRunnerAppName,
-						DefaultAgentName: defaultRunnerAgentName,
-					},
-				),
+				agentRunner:   ar,
 			}
 			ctx := t.Context()
 			sessionID := fake.UUID().V4()
@@ -658,21 +636,16 @@ func TestRunner(t *testing.T) {
 				SessionStorage:        stor,
 				RootLogger:            rootTestLogger,
 			})
+			ar, err := factory.NewAgentRunner(ctx, internal.NewAgentRunnerParams{
+				AppName:          defaultRunnerAppName,
+				AgentName:        defaultRunnerAgentName,
+				DefaultAgentName: defaultRunnerAgentName,
+				ToolsRegistry:    internal.StaticTools(nil),
+			})
+			require.NoError(t, err)
 			r := &Runner{
 				runnerFactory: factory,
-				executionRunner: internal.NewProfileExecutionRunner(
-					internal.ProfileExecutionRunnerParams{
-						NewAgentRunner: func(
-							ctx context.Context,
-							params internal.NewAgentRunnerParams,
-						) (internal.ProfileAgentRunner, error) {
-							return factory.NewAgentRunner(ctx, params)
-						},
-						ToolsProvider:    internal.StaticTools(nil),
-						AppName:          defaultRunnerAppName,
-						DefaultAgentName: defaultRunnerAgentName,
-					},
-				),
+				agentRunner:   ar,
 			}
 
 			sessionID := fake.UUID().V4()

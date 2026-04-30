@@ -46,6 +46,44 @@ type LLMRunner interface {
 	) iter.Seq2[*session.Event, error]
 }
 
+// ToolsProvider supplies tools for an agent. Implemented by *aitools.ToolsRegistry.
+type ToolsProvider interface {
+	GetTools() ([]tool.Tool, error)
+}
+
+// StaticTools returns a provider that serves a fixed set of tools.
+func StaticTools(tools []tool.Tool) *StaticToolsProvider {
+	return &StaticToolsProvider{tools: tools}
+}
+
+// StaticToolsProvider returns a fixed set of tools.
+type StaticToolsProvider struct {
+	tools []tool.Tool
+}
+
+func (s *StaticToolsProvider) GetTools() ([]tool.Tool, error) {
+	return s.tools, nil
+}
+
+type profilesService interface {
+	Get(ctx context.Context, name string) (*ap.AgentProfile, error)
+}
+
+// ACPRunRequest describes a resolved profile run for ACP stdio execution.
+type ACPRunRequest struct {
+	ProfileName string
+	Profile     *ap.AgentProfile
+	Model       string
+	UserID      string
+	SessionID   string
+	Message     *MessageContent
+}
+
+// ACPProfileExecutor executes ACP stdio profile runs behind an internal boundary.
+type ACPProfileExecutor interface {
+	RunACPProfile(ctx context.Context, request ACPRunRequest) (*RunResult, error)
+}
+
 type AgentRunnerFactory struct {
 	llmAdapterFactory     LLMAdapterFactory
 	llmAgentFactory       LLMAgentFactory
@@ -72,33 +110,23 @@ func NewAgentRunnerFactory(deps AgentRunnerFactoryDeps) *AgentRunnerFactory {
 	}
 }
 
-// ToolsProvider supplies tools for an agent. Implemented by *aitools.ToolsRegistry.
-type ToolsProvider interface {
-	GetTools() ([]tool.Tool, error)
-}
-
-// StaticTools returns a provider that serves a fixed set of tools.
-func StaticTools(tools []tool.Tool) *StaticToolsProvider {
-	return &StaticToolsProvider{tools: tools}
-}
-
-// StaticToolsProvider returns a fixed set of tools.
-type StaticToolsProvider struct {
-	tools []tool.Tool
-}
-
-func (s *StaticToolsProvider) GetTools() ([]tool.Tool, error) {
-	return s.tools, nil
-}
-
 type NewAgentRunnerParams struct {
 	AppName               string
 	AgentName             string
 	SystemPromptFragments []SystemPromptFragment
 	ToolsRegistry         ToolsProvider
 	ModelName             string // from RunParams; public Runner validates non-empty before NewAgentRunner
+
+	// Profile execution fields — required when AgentRunner.Run should handle profile dispatch.
+	DefaultAgentName   string
+	ProfilesService    profilesService
+	ACPProfileExecutor ACPProfileExecutor
 }
 
+// NewAgentRunner builds an AgentRunner. When params.ModelName is non-empty the LLM is
+// resolved and wired immediately (used for per-request child runners). When ModelName is
+// empty no LLM is resolved and the runner acts as a profile dispatcher only — direct runs
+// on such a runner must not be attempted.
 func (f *AgentRunnerFactory) NewAgentRunner(ctx context.Context, params NewAgentRunnerParams) (*AgentRunner, error) {
 	logger := f.rootLogger.With("component", "agent-runner")
 
@@ -108,21 +136,42 @@ func (f *AgentRunnerFactory) NewAgentRunner(ctx context.Context, params NewAgent
 		"modelName", params.ModelName,
 	)
 
-	tools, err := params.ToolsRegistry.GetTools()
+	toolsProvider := params.ToolsRegistry
+	if toolsProvider == nil {
+		toolsProvider = StaticTools(nil)
+	}
+
+	ar := &AgentRunner{
+		factory:               f,
+		sessionStorage:        f.sessionStorage,
+		appName:               params.AppName,
+		defaultAgentName:      params.DefaultAgentName,
+		systemPromptFragments: append([]SystemPromptFragment(nil), params.SystemPromptFragments...),
+		toolsProvider:         toolsProvider,
+		profilesService:       params.ProfilesService,
+		acpProfileExecutor:    params.ACPProfileExecutor,
+		logger:                logger,
+	}
+
+	if params.ModelName == "" {
+		return ar, nil
+	}
+
+	tools, err := toolsProvider.GetTools()
 	if err != nil {
 		return nil, fmt.Errorf("build tools: %w", err)
 	}
 
-	model, err := f.llmAdapterFactory(ctx, params.ModelName)
+	llmModel, err := f.llmAdapterFactory(ctx, params.ModelName)
 	if err != nil {
 		return nil, fmt.Errorf("resolve model: %w", err)
 	}
-	logger.DebugContext(ctx, "Resolved model", "model", model.Name())
+	logger.DebugContext(ctx, "Resolved model", "model", llmModel.Name())
 	cfg := llmagent.Config{
 		Name:                params.AgentName,
 		InstructionProvider: newSystemPromptInstructionProvider(params.SystemPromptFragments),
 		Tools:               tools,
-		Model:               model,
+		Model:               llmModel,
 	}
 	ag, err := f.llmAgentFactory(cfg)
 	if err != nil {
@@ -136,19 +185,21 @@ func (f *AgentRunnerFactory) NewAgentRunner(ctx context.Context, params NewAgent
 	if err != nil {
 		return nil, fmt.Errorf("create run executor: %w", err)
 	}
-	return &AgentRunner{
-		sessionStorage: f.sessionStorage,
-		appName:        params.AppName,
-		llmRunner:      llmRunner,
-		logger:         logger,
-	}, nil
+	ar.llmRunner = llmRunner
+	return ar, nil
 }
 
 type AgentRunner struct {
-	sessionStorage sessions.SessionsStorage
-	appName        string
-	llmRunner      LLMRunner
-	logger         *slog.Logger
+	factory               *AgentRunnerFactory
+	sessionStorage        sessions.SessionsStorage
+	appName               string
+	defaultAgentName      string
+	systemPromptFragments []SystemPromptFragment
+	toolsProvider         ToolsProvider
+	profilesService       profilesService
+	acpProfileExecutor    ACPProfileExecutor
+	llmRunner             LLMRunner
+	logger                *slog.Logger
 }
 
 // ensureSession verifies the session exists for the given sessionID.
@@ -195,11 +246,91 @@ type RunParams struct {
 	ProfileName string
 }
 
+// Run dispatches the run according to profile selection and execution mode.
+// Direct runs (no ProfileName) and regular profile runs go through the standard
+// built-in agent run path. ACP stdio profiles are delegated to ACPProfileExecutor.
 func (a *AgentRunner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
 	if params.SessionID == "" {
 		return nil, errors.New("sessionID is required")
 	}
 
+	profileName := strings.TrimSpace(params.ProfileName)
+	requestModel := strings.TrimSpace(params.Model)
+
+	if profileName == "" {
+		// If this runner was constructed with a specific model already wired, use it directly.
+		if a.llmRunner != nil {
+			return a.runWithLLMRunner(ctx, params)
+		}
+		if requestModel == "" {
+			return nil, errors.New("model is required")
+		}
+		return a.runBuiltIn(ctx, params, a.defaultAgentName, requestModel, "")
+	}
+
+	profile, err := a.loadProfile(ctx, profileName)
+	if err != nil {
+		return nil, err
+	}
+
+	switch profile.ExecutionSettings.ModeOrDefault() {
+	case ap.ExecutionModeRegular:
+		resolvedModel := requestModel
+		if resolvedModel == "" {
+			resolvedModel = strings.TrimSpace(profile.ExecutionSettings.DefaultModel)
+		}
+		if resolvedModel == "" {
+			return nil, errors.New("model is required")
+		}
+		return a.runBuiltIn(ctx, params, profile.Name, resolvedModel, profile.Instructions)
+	case ap.ExecutionModeACPStdio:
+		return a.runACP(ctx, params, profile, requestModel)
+	default:
+		return nil, WrapAgentExecError(
+			AgentExecErrorKindUnsupported,
+			"dispatch-profile",
+			fmt.Errorf(
+				"profile %q uses unsupported execution mode %q",
+				profile.Name,
+				profile.ExecutionSettings.Mode,
+			),
+		)
+	}
+}
+
+func (a *AgentRunner) loadProfile(
+	ctx context.Context,
+	profileName string,
+) (*ap.AgentProfile, error) {
+	if a.profilesService == nil {
+		return nil, WrapAgentExecError(
+			AgentExecErrorKindExecution,
+			"load-profile",
+			errors.New("profile execution unavailable"),
+		)
+	}
+
+	profile, err := a.profilesService.Get(ctx, profileName)
+	if err != nil {
+		if errors.Is(err, ap.ErrAgentProfileNotFound) {
+			return nil, WrapAgentExecError(
+				AgentExecErrorKindNotFound,
+				"load-profile",
+				fmt.Errorf("profile %q not found: %w", profileName, err),
+			)
+		}
+		return nil, WrapAgentExecError(
+			AgentExecErrorKindExecution,
+			"load-profile",
+			fmt.Errorf("load profile %q: %w", profileName, err),
+		)
+	}
+
+	return profile, nil
+}
+
+// runWithLLMRunner executes using the already-wired llmRunner on this AgentRunner.
+func (a *AgentRunner) runWithLLMRunner(ctx context.Context, params RunParams) (*RunResult, error) {
 	if err := a.ensureSession(ctx, params.UserID, params.SessionID); err != nil {
 		return nil, err
 	}
@@ -217,6 +348,76 @@ func (a *AgentRunner) Run(ctx context.Context, params RunParams) (*RunResult, er
 		StreamingMode: agent.StreamingModeSSE,
 	})
 	return NewRunResult(MapADKSessionEventSeq(adkEvents), params.SessionID), nil
+}
+
+// runBuiltIn creates a child AgentRunner for the given model/agentName/instructions and runs it.
+func (a *AgentRunner) runBuiltIn(
+	ctx context.Context,
+	params RunParams,
+	agentName string,
+	modelName string,
+	profileInstructions string,
+) (*RunResult, error) {
+	fragments := append([]SystemPromptFragment(nil), a.systemPromptFragments...)
+	if instr := strings.TrimSpace(profileInstructions); instr != "" {
+		fragments = append(fragments, SystemPromptFragment{
+			Section: "Profile Instructions",
+			Content: instr,
+		})
+	}
+
+	child, err := a.factory.NewAgentRunner(ctx, NewAgentRunnerParams{
+		AppName:               a.appName,
+		AgentName:             agentName,
+		SystemPromptFragments: fragments,
+		ToolsRegistry:         a.toolsProvider,
+		ModelName:             modelName,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if sessionErr := child.ensureSession(ctx, params.UserID, params.SessionID); sessionErr != nil {
+		return nil, sessionErr
+	}
+
+	a.logger.DebugContext(ctx,
+		"Running agent",
+		"userID", params.UserID,
+		"sessionID", params.SessionID,
+		"message", params.Message,
+		"model", modelName,
+	)
+
+	genAIMsg := messageContentToGenAI(params.Message)
+	adkEvents := child.llmRunner.Run(ctx, params.UserID, params.SessionID, genAIMsg, agent.RunConfig{
+		StreamingMode: agent.StreamingModeSSE,
+	})
+	return NewRunResult(MapADKSessionEventSeq(adkEvents), params.SessionID), nil
+}
+
+func (a *AgentRunner) runACP(
+	ctx context.Context,
+	params RunParams,
+	profile *ap.AgentProfile,
+	requestModel string,
+) (*RunResult, error) {
+	if a.acpProfileExecutor == nil {
+		return nil, WrapAgentExecError(
+			AgentExecErrorKindExecution,
+			"run-acp-profile",
+			errors.New("ACP profile runner unavailable"),
+		)
+	}
+
+	return a.acpProfileExecutor.RunACPProfile(ctx, ACPRunRequest{
+		ProfileName: profile.Name,
+		Profile:     profile,
+		Model:       requestModel,
+		UserID:      params.UserID,
+		SessionID:   params.SessionID,
+		Message:     params.Message,
+	})
 }
 
 // ReadSessionParams contains the parameters for reading a session.
@@ -321,215 +522,4 @@ func RunExecutorFactoryFromRunner(
 	cfg runner.Config,
 ) (*runner.Runner, error) {
 	return runner.New(cfg)
-}
-
-// ProfileAgentRunner executes built-in runtime runs.
-type ProfileAgentRunner interface {
-	Run(ctx context.Context, params RunParams) (*RunResult, error)
-}
-
-// NewProfileAgentRunnerFunc constructs a built-in runner for a resolved run path.
-type NewProfileAgentRunnerFunc func(ctx context.Context, params NewAgentRunnerParams) (ProfileAgentRunner, error)
-
-type profilesService interface {
-	Get(ctx context.Context, name string) (*ap.AgentProfile, error)
-}
-
-// ACPRunRequest describes a resolved profile run for ACP stdio execution.
-type ACPRunRequest struct {
-	ProfileName string
-	Profile     *ap.AgentProfile
-	Model       string
-	UserID      string
-	SessionID   string
-	Message     *MessageContent
-}
-
-// ACPProfileExecutor executes ACP stdio profile runs behind an internal boundary.
-type ACPProfileExecutor interface {
-	RunACPProfile(ctx context.Context, request ACPRunRequest) (*RunResult, error)
-}
-
-// ProfileExecutionRunnerParams configures the standard internal profile execution runner.
-type ProfileExecutionRunnerParams struct {
-	NewAgentRunner        NewProfileAgentRunnerFunc
-	ToolsProvider         ToolsProvider
-	ProfilesService       profilesService
-	ACPProfileExecutor    ACPProfileExecutor
-	AppName               string
-	DefaultAgentName      string
-	SystemPromptFragments []SystemPromptFragment
-}
-
-// ProfileExecutionRunner is the standard internal owner of direct and regular
-// profile-backed execution. ACP stdio runs are delegated to ACPProfileExecutor.
-type ProfileExecutionRunner struct {
-	newAgentRunner        NewProfileAgentRunnerFunc
-	toolsProvider         ToolsProvider
-	profilesService       profilesService
-	acpProfileExecutor    ACPProfileExecutor
-	appName               string
-	defaultAgentName      string
-	systemPromptFragments []SystemPromptFragment
-}
-
-// NewProfileExecutionRunner creates a ProfileExecutionRunner from the given params.
-func NewProfileExecutionRunner(params ProfileExecutionRunnerParams) *ProfileExecutionRunner {
-	toolsProvider := params.ToolsProvider
-	if toolsProvider == nil {
-		toolsProvider = StaticTools(nil)
-	}
-
-	return &ProfileExecutionRunner{
-		newAgentRunner:        params.NewAgentRunner,
-		toolsProvider:         toolsProvider,
-		profilesService:       params.ProfilesService,
-		acpProfileExecutor:    params.ACPProfileExecutor,
-		appName:               params.AppName,
-		defaultAgentName:      params.DefaultAgentName,
-		systemPromptFragments: append([]SystemPromptFragment(nil), params.SystemPromptFragments...),
-	}
-}
-
-// Run dispatches the run according to profile selection and execution mode.
-// Direct runs (no profileName) and regular profile runs go through the standard
-// built-in agent run path. ACP stdio profiles are delegated to ACPProfileExecutor.
-func (r *ProfileExecutionRunner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
-	profileName := strings.TrimSpace(params.ProfileName)
-	requestModel := strings.TrimSpace(params.Model)
-	if profileName == "" {
-		if requestModel == "" {
-			return nil, errors.New("model is required")
-		}
-		return r.runBuiltIn(ctx, params, params.Model, r.defaultAgentName, "")
-	}
-
-	profile, err := r.loadProfile(ctx, profileName)
-	if err != nil {
-		return nil, err
-	}
-
-	switch profile.ExecutionSettings.ModeOrDefault() {
-	case ap.ExecutionModeRegular:
-		resolvedModel := requestModel
-		if resolvedModel == "" {
-			resolvedModel = strings.TrimSpace(profile.ExecutionSettings.DefaultModel)
-		}
-		if resolvedModel == "" {
-			return nil, errors.New("model is required")
-		}
-		return r.runBuiltIn(ctx, params, resolvedModel, profile.Name, profile.Instructions)
-	case ap.ExecutionModeACPStdio:
-		return r.runACP(ctx, params, profile, requestModel)
-	default:
-		return nil, WrapAgentExecError(
-			AgentExecErrorKindUnsupported,
-			"dispatch-profile",
-			fmt.Errorf(
-				"profile %q uses unsupported execution mode %q",
-				profile.Name,
-				profile.ExecutionSettings.Mode,
-			),
-		)
-	}
-}
-
-func (r *ProfileExecutionRunner) loadProfile(
-	ctx context.Context,
-	profileName string,
-) (*ap.AgentProfile, error) {
-	if r.profilesService == nil {
-		return nil, WrapAgentExecError(
-			AgentExecErrorKindExecution,
-			"load-profile",
-			errors.New("profile execution unavailable"),
-		)
-	}
-
-	profile, err := r.profilesService.Get(ctx, profileName)
-	if err != nil {
-		if errors.Is(err, ap.ErrAgentProfileNotFound) {
-			return nil, WrapAgentExecError(
-				AgentExecErrorKindNotFound,
-				"load-profile",
-				fmt.Errorf("profile %q not found: %w", profileName, err),
-			)
-		}
-		return nil, WrapAgentExecError(
-			AgentExecErrorKindExecution,
-			"load-profile",
-			fmt.Errorf("load profile %q: %w", profileName, err),
-		)
-	}
-
-	return profile, nil
-}
-
-func (r *ProfileExecutionRunner) runBuiltIn(
-	ctx context.Context,
-	params RunParams,
-	modelName string,
-	agentName string,
-	profileInstructions string,
-) (*RunResult, error) {
-	if r.newAgentRunner == nil {
-		return nil, errors.New("new agent runner is required")
-	}
-
-	agentRunner, err := r.newAgentRunner(ctx, r.buildAgentRunnerParams(modelName, agentName, profileInstructions))
-	if err != nil {
-		return nil, err
-	}
-
-	return agentRunner.Run(ctx, RunParams{
-		UserID:    params.UserID,
-		SessionID: params.SessionID,
-		Message:   params.Message,
-		Model:     modelName,
-	})
-}
-
-func (r *ProfileExecutionRunner) buildAgentRunnerParams(
-	modelName string,
-	agentName string,
-	profileInstructions string,
-) NewAgentRunnerParams {
-	fragments := append([]SystemPromptFragment(nil), r.systemPromptFragments...)
-	if strings.TrimSpace(profileInstructions) != "" {
-		fragments = append(fragments, SystemPromptFragment{
-			Section: "Profile Instructions",
-			Content: profileInstructions,
-		})
-	}
-	return NewAgentRunnerParams{
-		AppName:               r.appName,
-		AgentName:             agentName,
-		SystemPromptFragments: fragments,
-		ToolsRegistry:         r.toolsProvider,
-		ModelName:             modelName,
-	}
-}
-
-func (r *ProfileExecutionRunner) runACP(
-	ctx context.Context,
-	params RunParams,
-	profile *ap.AgentProfile,
-	requestModel string,
-) (*RunResult, error) {
-	if r.acpProfileExecutor == nil {
-		return nil, WrapAgentExecError(
-			AgentExecErrorKindExecution,
-			"run-acp-profile",
-			errors.New("ACP profile runner unavailable"),
-		)
-	}
-
-	return r.acpProfileExecutor.RunACPProfile(ctx, ACPRunRequest{
-		ProfileName: profile.Name,
-		Profile:     profile,
-		Model:       requestModel,
-		UserID:      params.UserID,
-		SessionID:   params.SessionID,
-		Message:     params.Message,
-	})
 }

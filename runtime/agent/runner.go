@@ -123,7 +123,7 @@ type Runner struct {
 	runnerFactory   *internal.AgentRunnerFactory
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
-	executionRunner *internal.ProfileExecutionRunner
+	agentRunner     *internal.AgentRunner
 }
 
 func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
@@ -196,27 +196,28 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		return nil, fmt.Errorf("ACP profile runner: %w", err)
 	}
 
-	runner := &Runner{
+	agentRunner, err := runnerFactory.NewAgentRunner(context.Background(), internal.NewAgentRunnerParams{
+		AppName:               defaultRunnerAppName,
+		AgentName:             defaultRunnerAgentName,
+		DefaultAgentName:      defaultRunnerAgentName,
+		SystemPromptFragments: rOpts.systemPromptFragments,
+		ToolsRegistry:         toolsProvider,
+		ModelName:             "",
+		ProfilesService:       args.AgentProfilesService,
+		ACPProfileExecutor:    acpProfileExecutorAdapter{runner: acpProfileRun},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("agent runner: %w", err)
+	}
+
+	r := &Runner{
 		runnerFactory:   runnerFactory,
 		sessionsStorage: ss,
 		modelsLocator:   modelsLocator,
-		executionRunner: internal.NewProfileExecutionRunner(internal.ProfileExecutionRunnerParams{
-			NewAgentRunner: func(
-				ctx context.Context,
-				params internal.NewAgentRunnerParams,
-			) (internal.ProfileAgentRunner, error) {
-				return runnerFactory.NewAgentRunner(ctx, params)
-			},
-			ToolsProvider:         toolsProvider,
-			ProfilesService:       args.AgentProfilesService,
-			ACPProfileExecutor:    acpProfileExecutorAdapter{runner: acpProfileRun},
-			AppName:               defaultRunnerAppName,
-			DefaultAgentName:      defaultRunnerAgentName,
-			SystemPromptFragments: rOpts.systemPromptFragments,
-		}),
+		agentRunner:     agentRunner,
 	}
 
-	return runner, nil
+	return r, nil
 }
 
 const (
@@ -241,11 +242,11 @@ func (r *Runner) ModelsLocator() ModelsLister { //nolint:ireturn
 }
 
 func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) {
-	if r.executionRunner == nil {
+	if r.agentRunner == nil {
 		return nil, errors.New("execution runner is required")
 	}
 
-	return r.executionRunner.Run(ctx, params)
+	return r.agentRunner.Run(ctx, params)
 }
 
 type acpProfileExecutorAdapter struct {
