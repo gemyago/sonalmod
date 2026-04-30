@@ -8,7 +8,6 @@ import (
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
-	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 )
 
 // Executor runs ACP stdio requests derived from a resolved profile.
@@ -63,8 +62,8 @@ func NewACPProfileRunnerWithExecutor(params NewACPProfileRunnerWithExecutorParam
 // Run executes the resolved ACP stdio profile and returns a standard runtime run result.
 func (r *ACPProfileRunner) Run(ctx context.Context, request RunRequest) (*rt.RunResult, error) {
 	if request.Profile == nil {
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindValidation,
+		return nil, rt.WrapAgentExecError(
+			rt.AgentExecErrorKindValidation,
 			"run-acp-profile",
 			errors.New("profile is required"),
 		)
@@ -75,8 +74,8 @@ func (r *ACPProfileRunner) Run(ctx context.Context, request RunRequest) (*rt.Run
 		MessageContentText(request.Message),
 	)
 	if mapErr != nil {
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindExecution,
+		return nil, rt.WrapAgentExecError(
+			rt.AgentExecErrorKindExecution,
 			"map-acp-stdio-request",
 			fmt.Errorf("run profile %q: %w", profileRunName(request), mapErr),
 		)
@@ -110,8 +109,8 @@ func (r *ACPProfileRunner) recordEvents(
 	}
 
 	if err := r.recorder.Record(ctx, request, events); err != nil {
-		return profilerun.WrapError(
-			profilerun.ErrorKindExecution,
+		return rt.WrapAgentExecError(
+			rt.AgentExecErrorKindExecution,
 			"record-acp-stdio-session",
 			fmt.Errorf("run profile %q: %w", profileRunName(request), err),
 		)

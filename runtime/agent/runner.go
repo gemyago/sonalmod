@@ -10,7 +10,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal"
 	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/gemyago/sonalmod/runtime/internal/summarize"
 	"google.golang.org/adk/agent/llmagent"
@@ -124,7 +123,7 @@ type Runner struct {
 	runnerFactory   *internal.AgentRunnerFactory
 	sessionsStorage sessions.SessionsStorage
 	modelsLocator   *internal.ModelsLocator
-	executionRunner *profilerun.ExecutionRunner
+	executionRunner *internal.ProfileExecutionRunner
 }
 
 func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
@@ -201,11 +200,11 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		runnerFactory:   runnerFactory,
 		sessionsStorage: ss,
 		modelsLocator:   modelsLocator,
-		executionRunner: profilerun.NewExecutionRunner(profilerun.ExecutionRunnerParams{
+		executionRunner: internal.NewProfileExecutionRunner(internal.ProfileExecutionRunnerParams{
 			NewAgentRunner: func(
 				ctx context.Context,
 				params internal.NewAgentRunnerParams,
-			) (profilerun.AgentRunner, error) {
+			) (internal.ProfileAgentRunner, error) {
 				return runnerFactory.NewAgentRunner(ctx, params)
 			},
 			ToolsProvider:         toolsProvider,
@@ -255,11 +254,11 @@ type acpProfileExecutorAdapter struct {
 
 func (a acpProfileExecutorAdapter) RunACPProfile(
 	ctx context.Context,
-	request profilerun.ACPRunRequest,
+	request internal.ACPRunRequest,
 ) (*internal.RunResult, error) {
 	if a.runner == nil {
-		return nil, profilerun.WrapError(
-			profilerun.ErrorKindExecution,
+		return nil, internal.WrapAgentExecError(
+			internal.AgentExecErrorKindExecution,
 			"run-acp-profile",
 			errors.New("ACP profile runner unavailable"),
 		)

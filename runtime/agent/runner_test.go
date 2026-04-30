@@ -12,7 +12,6 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -236,12 +235,12 @@ func TestRunner(t *testing.T) {
 			})
 			r := &Runner{
 				runnerFactory: factory,
-				executionRunner: profilerun.NewExecutionRunner(
-					profilerun.ExecutionRunnerParams{
+				executionRunner: internal.NewProfileExecutionRunner(
+					internal.ProfileExecutionRunnerParams{
 						NewAgentRunner: func(
 							ctx context.Context,
 							params internal.NewAgentRunnerParams,
-						) (profilerun.AgentRunner, error) {
+						) (internal.ProfileAgentRunner, error) {
 							return factory.NewAgentRunner(ctx, params)
 						},
 						ToolsProvider:      internal.StaticTools(nil),
@@ -432,9 +431,9 @@ func TestRunner(t *testing.T) {
 
 			require.Error(t, runErr)
 			assert.Nil(t, result)
-			var profileRunErr *profilerun.Error
+			var profileRunErr *internal.AgentExecError
 			require.ErrorAs(t, runErr, &profileRunErr)
-			assert.Equal(t, profilerun.ErrorKindNotFound, profileRunErr.Kind)
+			assert.Equal(t, internal.AgentExecErrorKindNotFound, profileRunErr.Kind)
 			assert.ErrorIs(t, runErr, ap.ErrAgentProfileNotFound)
 		})
 
@@ -463,9 +462,9 @@ func TestRunner(t *testing.T) {
 
 			require.Error(t, runErr)
 			assert.Nil(t, result)
-			var profileRunErr *profilerun.Error
+			var profileRunErr *internal.AgentExecError
 			require.ErrorAs(t, runErr, &profileRunErr)
-			assert.Equal(t, profilerun.ErrorKindExecution, profileRunErr.Kind)
+			assert.Equal(t, internal.AgentExecErrorKindExecution, profileRunErr.Kind)
 			require.ErrorIs(t, runErr, expectedErr)
 			assert.Contains(t, profileRunErr.Error(), "load-profile")
 		})
@@ -539,12 +538,12 @@ func TestRunner(t *testing.T) {
 			})
 			r := &Runner{
 				runnerFactory: factory,
-				executionRunner: profilerun.NewExecutionRunner(
-					profilerun.ExecutionRunnerParams{
+				executionRunner: internal.NewProfileExecutionRunner(
+					internal.ProfileExecutionRunnerParams{
 						NewAgentRunner: func(
 							ctx context.Context,
 							params internal.NewAgentRunnerParams,
-						) (profilerun.AgentRunner, error) {
+						) (internal.ProfileAgentRunner, error) {
 							return factory.NewAgentRunner(ctx, params)
 						},
 						ToolsProvider:    internal.StaticTools(nil),
@@ -662,12 +661,12 @@ func TestRunner(t *testing.T) {
 			})
 			r := &Runner{
 				runnerFactory: factory,
-				executionRunner: profilerun.NewExecutionRunner(
-					profilerun.ExecutionRunnerParams{
+				executionRunner: internal.NewProfileExecutionRunner(
+					internal.ProfileExecutionRunnerParams{
 						NewAgentRunner: func(
 							ctx context.Context,
 							params internal.NewAgentRunnerParams,
-						) (profilerun.AgentRunner, error) {
+						) (internal.ProfileAgentRunner, error) {
 							return factory.NewAgentRunner(ctx, params)
 						},
 						ToolsProvider:    internal.StaticTools(nil),
@@ -774,12 +773,12 @@ func TestRunner(t *testing.T) {
 	t.Run("acpProfileExecutorAdapter", func(t *testing.T) {
 		t.Run("returns execution error when runner is unavailable", func(t *testing.T) {
 			adapter := acpProfileExecutorAdapter{}
-			result, err := adapter.RunACPProfile(t.Context(), profilerun.ACPRunRequest{})
+			result, err := adapter.RunACPProfile(t.Context(), internal.ACPRunRequest{})
 			require.Error(t, err)
 			assert.Nil(t, result)
-			var runErr *profilerun.Error
+			var runErr *internal.AgentExecError
 			require.ErrorAs(t, err, &runErr)
-			assert.Equal(t, profilerun.ErrorKindExecution, runErr.Kind)
+			assert.Equal(t, internal.AgentExecErrorKindExecution, runErr.Kind)
 			assert.Equal(t, "run-acp-profile", runErr.Op)
 			assert.EqualError(t, runErr.Err, "ACP profile runner unavailable")
 		})
@@ -815,7 +814,7 @@ func TestRunner(t *testing.T) {
 			require.NoError(t, err)
 
 			adapter := acpProfileExecutorAdapter{runner: acpRunner}
-			result, err := adapter.RunACPProfile(t.Context(), profilerun.ACPRunRequest{
+			result, err := adapter.RunACPProfile(t.Context(), internal.ACPRunRequest{
 				ProfileName: profileName,
 				Profile:     profile,
 				Model:       modelName,

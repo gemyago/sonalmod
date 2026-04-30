@@ -13,7 +13,6 @@ import (
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/callerid"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
-	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 )
 
 var _ agent.AgentRunner = (*rt.BackgroundRunner)(nil)
@@ -254,22 +253,22 @@ func (s *AgentAPIServer) writeAgentRunError(
 	op string,
 	err error,
 ) {
-	var profileRunErr *profilerun.Error
-	if errors.As(err, &profileRunErr) {
-		switch profileRunErr.Kind {
-		case profilerun.ErrorKindValidation, profilerun.ErrorKindUnsupported:
-			s.logger.DebugContext(ctx, op+": profile run", "err", err)
+	var execErr *rt.AgentExecError
+	if errors.As(err, &execErr) {
+		switch execErr.Kind {
+		case rt.AgentExecErrorKindValidation, rt.AgentExecErrorKindUnsupported:
+			s.logger.DebugContext(ctx, op+": agent exec", "err", err)
 			detail := "invalid profileName"
-			if profileRunErr.Err != nil {
-				detail = profileRunErr.Err.Error()
+			if execErr.Err != nil {
+				detail = execErr.Err.Error()
 			}
 			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", detail)
 			return
-		case profilerun.ErrorKindNotFound:
-			s.logger.DebugContext(ctx, op+": profile run", "err", err)
+		case rt.AgentExecErrorKindNotFound:
+			s.logger.DebugContext(ctx, op+": agent exec", "err", err)
 			writeProblemDetails(w, http.StatusNotFound, "Not Found", "agent profile not found")
 			return
-		case profilerun.ErrorKindExecution:
+		case rt.AgentExecErrorKindExecution:
 			break
 		}
 	}

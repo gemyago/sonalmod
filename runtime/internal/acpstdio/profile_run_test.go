@@ -9,7 +9,6 @@ import (
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
-	"github.com/gemyago/sonalmod/runtime/internal/profilerun"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -234,9 +233,9 @@ func TestACPProfileRunner(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var profileErr *profilerun.Error
+		var profileErr *rt.AgentExecError
 		require.ErrorAs(t, runErr, &profileErr)
-		assert.Equal(t, profilerun.ErrorKindExecution, profileErr.Kind)
+		assert.Equal(t, rt.AgentExecErrorKindExecution, profileErr.Kind)
 		assert.Contains(t, profileErr.Error(), "record-acp-stdio-session")
 		assert.ErrorIs(t, runErr, expectedErr)
 	})
@@ -280,9 +279,9 @@ func TestACPProfileRunner(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var profileErr *profilerun.Error
+		var profileErr *rt.AgentExecError
 		require.ErrorAs(t, runErr, &profileErr)
-		assert.Equal(t, profilerun.ErrorKindExecution, profileErr.Kind)
+		assert.Equal(t, rt.AgentExecErrorKindExecution, profileErr.Kind)
 		assert.Contains(t, profileErr.Error(), "record-acp-stdio-session")
 		assert.ErrorIs(t, runErr, expectedErr)
 	})
@@ -303,9 +302,9 @@ func TestACPProfileRunner(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var profileErr *profilerun.Error
+		var profileErr *rt.AgentExecError
 		require.ErrorAs(t, runErr, &profileErr)
-		assert.Equal(t, profilerun.ErrorKindValidation, profileErr.Kind)
+		assert.Equal(t, rt.AgentExecErrorKindValidation, profileErr.Kind)
 		assert.Contains(t, profileErr.Error(), "run-acp-profile")
 	})
 
@@ -342,9 +341,9 @@ func TestACPProfileRunner(t *testing.T) {
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
-		var profileErr *profilerun.Error
+		var profileErr *rt.AgentExecError
 		require.ErrorAs(t, runErr, &profileErr)
-		assert.Equal(t, profilerun.ErrorKindExecution, profileErr.Kind)
+		assert.Equal(t, rt.AgentExecErrorKindExecution, profileErr.Kind)
 		assert.Contains(t, profileErr.Error(), requestProfileName)
 	})
 }

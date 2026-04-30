@@ -1,4 +1,6 @@
-package profilerun
+//go:build !release
+
+package internal
 
 import (
 	"context"
@@ -6,14 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestExecutionRunner(t *testing.T) {
+func TestProfileExecutionRunner(t *testing.T) {
 	t.Parallel()
 
 	fake := faker.New()
@@ -24,18 +25,18 @@ func TestExecutionRunner(t *testing.T) {
 		modelName := " " + fake.Lorem().Word() + "/" + fake.Lorem().Word() + " "
 		sessionID := fake.UUID().V4()
 		userID := fake.UUID().V4()
-		msg := &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(4)}}}
+		msg := &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(4)}}}
 
-		var capturedFactoryParams rt.NewAgentRunnerParams
-		var capturedRunParams rt.RunParams
+		var capturedFactoryParams NewAgentRunnerParams
+		var capturedRunParams RunParams
 
-		r := NewExecutionRunner(ExecutionRunnerParams{
-			NewAgentRunner: func(_ context.Context, params rt.NewAgentRunnerParams) (AgentRunner, error) {
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
+			NewAgentRunner: func(_ context.Context, params NewAgentRunnerParams) (ProfileAgentRunner, error) {
 				capturedFactoryParams = params
-				return &runExecutorStub{
-					run: func(_ context.Context, params rt.RunParams) (*rt.RunResult, error) {
+				return &profileAgentRunnerStub{
+					run: func(_ context.Context, params RunParams) (*RunResult, error) {
 						capturedRunParams = params
-						return singleTextRunResult(sessionID), nil
+						return singleTextProfileRunResult(sessionID), nil
 					},
 				}, nil
 			},
@@ -43,7 +44,7 @@ func TestExecutionRunner(t *testing.T) {
 			DefaultAgentName: fake.Lorem().Word(),
 		})
 
-		result, err := r.Run(t.Context(), rt.RunParams{
+		result, err := r.Run(t.Context(), RunParams{
 			UserID:    userID,
 			SessionID: sessionID,
 			Message:   msg,
@@ -66,21 +67,21 @@ func TestExecutionRunner(t *testing.T) {
 		profileInstructions := fake.Lorem().Sentence(5)
 		defaultModel := fake.Lorem().Word() + "/" + fake.Lorem().Word()
 		overrideModel := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		baseFragment := rt.SystemPromptFragment{
+		baseFragment := SystemPromptFragment{
 			Section: fake.Lorem().Word(),
 			Content: fake.Lorem().Sentence(4),
 		}
 
-		var capturedFactoryParams rt.NewAgentRunnerParams
-		var capturedRunParams rt.RunParams
+		var capturedFactoryParams NewAgentRunnerParams
+		var capturedRunParams RunParams
 
-		r := NewExecutionRunner(ExecutionRunnerParams{
-			NewAgentRunner: func(_ context.Context, params rt.NewAgentRunnerParams) (AgentRunner, error) {
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
+			NewAgentRunner: func(_ context.Context, params NewAgentRunnerParams) (ProfileAgentRunner, error) {
 				capturedFactoryParams = params
-				return &runExecutorStub{
-					run: func(_ context.Context, params rt.RunParams) (*rt.RunResult, error) {
+				return &profileAgentRunnerStub{
+					run: func(_ context.Context, params RunParams) (*RunResult, error) {
 						capturedRunParams = params
-						return singleTextRunResult(fake.UUID().V4()), nil
+						return singleTextProfileRunResult(fake.UUID().V4()), nil
 					},
 				}, nil
 			},
@@ -97,15 +98,15 @@ func TestExecutionRunner(t *testing.T) {
 			},
 			AppName:          fake.Lorem().Word(),
 			DefaultAgentName: fake.Lorem().Word(),
-			SystemPromptFragments: []rt.SystemPromptFragment{
+			SystemPromptFragments: []SystemPromptFragment{
 				baseFragment,
 			},
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(4)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(4)}}},
 			ProfileName: profileName,
 			Model:       overrideModel,
 		})
@@ -115,7 +116,7 @@ func TestExecutionRunner(t *testing.T) {
 		assert.Equal(t, overrideModel, capturedFactoryParams.ModelName)
 		require.Len(t, capturedFactoryParams.SystemPromptFragments, 2)
 		assert.Equal(t, baseFragment, capturedFactoryParams.SystemPromptFragments[0])
-		assert.Equal(t, rt.SystemPromptFragment{
+		assert.Equal(t, SystemPromptFragment{
 			Section: "Profile Instructions",
 			Content: profileInstructions,
 		}, capturedFactoryParams.SystemPromptFragments[1])
@@ -129,14 +130,14 @@ func TestExecutionRunner(t *testing.T) {
 
 		profileName := "profile-" + fake.Lorem().Word()
 		defaultModel := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-		var capturedFactoryParams rt.NewAgentRunnerParams
+		var capturedFactoryParams NewAgentRunnerParams
 
-		r := NewExecutionRunner(ExecutionRunnerParams{
-			NewAgentRunner: func(_ context.Context, params rt.NewAgentRunnerParams) (AgentRunner, error) {
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
+			NewAgentRunner: func(_ context.Context, params NewAgentRunnerParams) (ProfileAgentRunner, error) {
 				capturedFactoryParams = params
-				return &runExecutorStub{
-					run: func(_ context.Context, _ rt.RunParams) (*rt.RunResult, error) {
-						return singleTextRunResult(fake.UUID().V4()), nil
+				return &profileAgentRunnerStub{
+					run: func(_ context.Context, _ RunParams) (*RunResult, error) {
+						return singleTextProfileRunResult(fake.UUID().V4()), nil
 					},
 				}, nil
 			},
@@ -154,10 +155,10 @@ func TestExecutionRunner(t *testing.T) {
 			DefaultAgentName: fake.Lorem().Word(),
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(4)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(4)}}},
 			ProfileName: profileName,
 		})
 		require.NoError(t, err)
@@ -167,14 +168,13 @@ func TestExecutionRunner(t *testing.T) {
 	t.Run("returns model required when direct run model is empty", func(t *testing.T) {
 		t.Parallel()
 
-		r := NewExecutionRunner(ExecutionRunnerParams{})
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:    fake.UUID().V4(),
 			SessionID: fake.UUID().V4(),
-			Message:   &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+			Message:   &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 		})
-		require.Error(t, err)
 		require.ErrorContains(t, err, "model is required")
 	})
 
@@ -182,7 +182,7 @@ func TestExecutionRunner(t *testing.T) {
 		t.Parallel()
 
 		profileName := "profile-" + fake.Lorem().Word()
-		r := NewExecutionRunner(ExecutionRunnerParams{
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
 			ProfilesService: &profilesServiceStub{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return &ap.AgentProfile{
@@ -193,13 +193,12 @@ func TestExecutionRunner(t *testing.T) {
 			},
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 			ProfileName: profileName,
 		})
-		require.Error(t, err)
 		require.ErrorContains(t, err, "model is required")
 	})
 
@@ -207,7 +206,7 @@ func TestExecutionRunner(t *testing.T) {
 		t.Parallel()
 
 		profileName := "profile-" + fake.Lorem().Word()
-		r := NewExecutionRunner(ExecutionRunnerParams{
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
 			ProfilesService: &profilesServiceStub{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return nil, ap.ErrAgentProfileNotFound
@@ -215,16 +214,16 @@ func TestExecutionRunner(t *testing.T) {
 			},
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 			ProfileName: profileName,
 		})
 		require.Error(t, err)
-		var profileRunErr *Error
-		require.ErrorAs(t, err, &profileRunErr)
-		assert.Equal(t, ErrorKindNotFound, profileRunErr.Kind)
+		var execErr *AgentExecError
+		require.ErrorAs(t, err, &execErr)
+		assert.Equal(t, AgentExecErrorKindNotFound, execErr.Kind)
 		assert.ErrorIs(t, err, ap.ErrAgentProfileNotFound)
 	})
 
@@ -233,7 +232,7 @@ func TestExecutionRunner(t *testing.T) {
 
 		profileName := "profile-" + fake.Lorem().Word()
 		expectedErr := errors.New(fake.Lorem().Sentence(4))
-		r := NewExecutionRunner(ExecutionRunnerParams{
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
 			ProfilesService: &profilesServiceStub{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return nil, expectedErr
@@ -241,25 +240,25 @@ func TestExecutionRunner(t *testing.T) {
 			},
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 			ProfileName: profileName,
 		})
 		require.Error(t, err)
-		var profileRunErr *Error
-		require.ErrorAs(t, err, &profileRunErr)
-		assert.Equal(t, ErrorKindExecution, profileRunErr.Kind)
+		var execErr *AgentExecError
+		require.ErrorAs(t, err, &execErr)
+		assert.Equal(t, AgentExecErrorKindExecution, execErr.Kind)
 		require.ErrorIs(t, err, expectedErr)
-		assert.Contains(t, profileRunErr.Error(), "load-profile")
+		assert.Contains(t, execErr.Error(), "load-profile")
 	})
 
 	t.Run("returns unsupported error for unknown profile mode", func(t *testing.T) {
 		t.Parallel()
 
 		profileName := "profile-" + fake.Lorem().Word()
-		r := NewExecutionRunner(ExecutionRunnerParams{
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
 			ProfilesService: &profilesServiceStub{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return &ap.AgentProfile{
@@ -272,16 +271,16 @@ func TestExecutionRunner(t *testing.T) {
 			},
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 			ProfileName: profileName,
 		})
 		require.Error(t, err)
-		var profileRunErr *Error
-		require.ErrorAs(t, err, &profileRunErr)
-		assert.Equal(t, ErrorKindUnsupported, profileRunErr.Kind)
+		var execErr *AgentExecError
+		require.ErrorAs(t, err, &execErr)
+		assert.Equal(t, AgentExecErrorKindUnsupported, execErr.Kind)
 	})
 
 	t.Run("acp-stdio profile delegates to ACP executor", func(t *testing.T) {
@@ -291,10 +290,10 @@ func TestExecutionRunner(t *testing.T) {
 		requestModel := " " + fake.Lorem().Word() + "/" + fake.Lorem().Word() + " "
 		sessionID := fake.UUID().V4()
 		userID := fake.UUID().V4()
-		msg := &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}}
+		msg := &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}}
 		var capturedRequest ACPRunRequest
 
-		r := NewExecutionRunner(ExecutionRunnerParams{
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
 			ProfilesService: &profilesServiceStub{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return &ap.AgentProfile{
@@ -306,14 +305,14 @@ func TestExecutionRunner(t *testing.T) {
 				},
 			},
 			ACPProfileExecutor: &acpProfileExecutorStub{
-				run: func(_ context.Context, request ACPRunRequest) (*rt.RunResult, error) {
+				run: func(_ context.Context, request ACPRunRequest) (*RunResult, error) {
 					capturedRequest = request
-					return singleTextRunResult(sessionID), nil
+					return singleTextProfileRunResult(sessionID), nil
 				},
 			},
 		})
 
-		result, err := r.Run(t.Context(), rt.RunParams{
+		result, err := r.Run(t.Context(), RunParams{
 			UserID:      userID,
 			SessionID:   sessionID,
 			Message:     msg,
@@ -336,7 +335,7 @@ func TestExecutionRunner(t *testing.T) {
 		t.Parallel()
 
 		profileName := "profile-" + fake.Lorem().Word()
-		r := NewExecutionRunner(ExecutionRunnerParams{
+		r := NewProfileExecutionRunner(ProfileExecutionRunnerParams{
 			ProfilesService: &profilesServiceStub{
 				get: func(context.Context, string) (*ap.AgentProfile, error) {
 					return &ap.AgentProfile{
@@ -349,28 +348,28 @@ func TestExecutionRunner(t *testing.T) {
 			},
 		})
 
-		_, err := r.Run(t.Context(), rt.RunParams{
+		_, err := r.Run(t.Context(), RunParams{
 			UserID:      fake.UUID().V4(),
 			SessionID:   fake.UUID().V4(),
-			Message:     &rt.MessageContent{Parts: []rt.MessagePart{{Text: fake.Lorem().Sentence(3)}}},
+			Message:     &MessageContent{Parts: []MessagePart{{Text: fake.Lorem().Sentence(3)}}},
 			ProfileName: profileName,
 		})
 		require.Error(t, err)
-		var profileRunErr *Error
-		require.ErrorAs(t, err, &profileRunErr)
-		assert.Equal(t, ErrorKindExecution, profileRunErr.Kind)
-		assert.Contains(t, profileRunErr.Error(), "run-acp-profile")
+		var execErr *AgentExecError
+		require.ErrorAs(t, err, &execErr)
+		assert.Equal(t, AgentExecErrorKindExecution, execErr.Kind)
+		assert.Contains(t, execErr.Error(), "run-acp-profile")
 	})
 }
 
-func singleTextRunResult(sessionID string) *rt.RunResult {
-	return rt.NewRunResult(
-		func(yield func(*rt.SessionEvent, error) bool) {
-			_ = yield(&rt.SessionEvent{
+func singleTextProfileRunResult(sessionID string) *RunResult {
+	return NewRunResult(
+		func(yield func(*SessionEvent, error) bool) {
+			_ = yield(&SessionEvent{
 				TurnComplete: true,
-				Content: &rt.SessionEventContent{
+				Content: &SessionEventContent{
 					Role: "model",
-					Parts: []rt.SessionEventPart{{
+					Parts: []SessionEventPart{{
 						Text: "ok",
 					}},
 				},
@@ -380,11 +379,11 @@ func singleTextRunResult(sessionID string) *rt.RunResult {
 	)
 }
 
-type runExecutorStub struct {
-	run func(ctx context.Context, params rt.RunParams) (*rt.RunResult, error)
+type profileAgentRunnerStub struct {
+	run func(ctx context.Context, params RunParams) (*RunResult, error)
 }
 
-func (s *runExecutorStub) Run(ctx context.Context, params rt.RunParams) (*rt.RunResult, error) {
+func (s *profileAgentRunnerStub) Run(ctx context.Context, params RunParams) (*RunResult, error) {
 	return s.run(ctx, params)
 }
 
@@ -397,12 +396,12 @@ func (s *profilesServiceStub) Get(ctx context.Context, name string) (*ap.AgentPr
 }
 
 type acpProfileExecutorStub struct {
-	run func(ctx context.Context, request ACPRunRequest) (*rt.RunResult, error)
+	run func(ctx context.Context, request ACPRunRequest) (*RunResult, error)
 }
 
 func (s *acpProfileExecutorStub) RunACPProfile(
 	ctx context.Context,
 	request ACPRunRequest,
-) (*rt.RunResult, error) {
+) (*RunResult, error) {
 	return s.run(ctx, request)
 }
