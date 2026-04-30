@@ -1,4 +1,4 @@
-package codinglane
+package acpstdio
 
 import (
 	"bufio"
@@ -22,8 +22,8 @@ import (
 func TestOpenCodeACPClient(t *testing.T) {
 	fake := faker.New()
 
-	makeRequest := func() ACPStdioLaunchRequest {
-		return ACPStdioLaunchRequest{
+	makeRequest := func() LaunchRequest {
+		return LaunchRequest{
 			AgentCommand: agentprofiles.ACPStdioAgentCommand{
 				Command: os.Args[0],
 				Args: []string{
@@ -84,7 +84,7 @@ func TestOpenCodeACPClient(t *testing.T) {
 		client := NewOpenCodeACPClient()
 		_, err := client.Launch(t.Context(), makeRequest())
 		require.Error(t, err)
-		assertACPStdioErrorKind(t, err, ACPStdioErrorKindProtocol)
+		assertLaunchErrorKind(t, err, LaunchErrorKindProtocol)
 	})
 
 	t.Run("missing session id response returns protocol errors", func(t *testing.T) {
@@ -94,32 +94,32 @@ func TestOpenCodeACPClient(t *testing.T) {
 		client := NewOpenCodeACPClient()
 		_, err := client.Launch(t.Context(), makeRequest())
 		require.Error(t, err)
-		assertACPStdioErrorKind(t, err, ACPStdioErrorKindProtocol)
+		assertLaunchErrorKind(t, err, LaunchErrorKindProtocol)
 	})
 
 	t.Run("validation and subprocess startup errors return typed kinds", func(t *testing.T) {
 		client := NewOpenCodeACPClient()
 
-		_, err := client.Launch(t.Context(), ACPStdioLaunchRequest{
+		_, err := client.Launch(t.Context(), LaunchRequest{
 			AgentCommand: agentprofiles.ACPStdioAgentCommand{},
 			Prompt:       "run",
 		})
 		require.Error(t, err)
-		assertACPStdioErrorKind(t, err, ACPStdioErrorKindValidation)
+		assertLaunchErrorKind(t, err, LaunchErrorKindValidation)
 
-		_, err = client.Launch(t.Context(), ACPStdioLaunchRequest{
+		_, err = client.Launch(t.Context(), LaunchRequest{
 			AgentCommand: agentprofiles.ACPStdioAgentCommand{Command: os.Args[0], Args: []string{"-test.run=Nope"}},
 			Prompt:       " ",
 		})
 		require.Error(t, err)
-		assertACPStdioErrorKind(t, err, ACPStdioErrorKindValidation)
+		assertLaunchErrorKind(t, err, LaunchErrorKindValidation)
 
-		_, err = client.Launch(t.Context(), ACPStdioLaunchRequest{
+		_, err = client.Launch(t.Context(), LaunchRequest{
 			AgentCommand: agentprofiles.ACPStdioAgentCommand{Command: "/no/such/opencode-binary"},
 			Prompt:       "run",
 		})
 		require.Error(t, err)
-		assertACPStdioErrorKind(t, err, ACPStdioErrorKindSubprocess)
+		assertLaunchErrorKind(t, err, LaunchErrorKindSubprocess)
 	})
 }
 
@@ -202,31 +202,31 @@ func TestOpenCodeACPClientHelperProcess(_ *testing.T) {
 	os.Exit(0)
 }
 
-func assertACPStdioErrorKind(t *testing.T, err error, kind ACPStdioErrorKind) {
+func assertLaunchErrorKind(t *testing.T, err error, kind LaunchErrorKind) {
 	t.Helper()
 
-	var acpErr *ACPStdioError
+	var acpErr *LaunchError
 	require.ErrorAs(t, err, &acpErr)
 	assert.Equal(t, kind, acpErr.Kind)
 }
 
 func TestOpenCodeACPClientInternalHelpers(t *testing.T) {
 	t.Run("error wrapper and unwrapping behavior", func(t *testing.T) {
-		require.NoError(t, wrapACPStdioError(ACPStdioErrorKindProtocol, "x", nil))
+		require.NoError(t, wrapLaunchError(LaunchErrorKindProtocol, "x", nil))
 
 		sourceErr := errors.New("source")
-		wrapped := wrapACPStdioError(ACPStdioErrorKindProtocol, "initialize", sourceErr)
+		wrapped := wrapLaunchError(LaunchErrorKindProtocol, "initialize", sourceErr)
 		require.Error(t, wrapped)
 
-		var acpErr *ACPStdioError
+		var acpErr *LaunchError
 		require.ErrorAs(t, wrapped, &acpErr)
-		assert.Equal(t, ACPStdioErrorKindProtocol, acpErr.Kind)
+		assert.Equal(t, LaunchErrorKindProtocol, acpErr.Kind)
 		require.ErrorIs(t, wrapped, sourceErr)
 		assert.Contains(t, acpErr.Error(), "initialize")
 	})
 
 	t.Run("resolve request applies cwd and mcp defaults", func(t *testing.T) {
-		resolved, err := resolveACPStdioLaunchRequest(ACPStdioLaunchRequest{
+		resolved, err := resolveACPLaunchRequest(LaunchRequest{
 			AgentCommand: agentprofiles.ACPStdioAgentCommand{Command: "opencode", Args: []string{"acp"}},
 			Prompt:       "run tests",
 		})
@@ -346,11 +346,11 @@ func TestOpenCodeACPClientInternalHelpers(t *testing.T) {
 		_, err = extractOpenCodeSessionID(json.RawMessage(`"x"`))
 		require.Error(t, err)
 
-		_, err = parseACPStdioSessionUpdate(json.RawMessage(`{"update":{"type":"progress"}}`))
+		_, err = parseACPSessionUpdate(json.RawMessage(`{"update":{"type":"progress"}}`))
 		require.Error(t, err)
-		_, err = parseACPStdioSessionUpdate(json.RawMessage(`{"sessionId":"s"}`))
+		_, err = parseACPSessionUpdate(json.RawMessage(`{"sessionId":"s"}`))
 		require.Error(t, err)
-		_, err = parseACPStdioSessionUpdate(json.RawMessage(`{"sessionId":"s","update":{"x":"y"}}`))
+		_, err = parseACPSessionUpdate(json.RawMessage(`{"sessionId":"s","update":{"x":"y"}}`))
 		require.Error(t, err)
 
 		_, err = jsonRawObject(json.RawMessage(`null`), "payload")
@@ -358,7 +358,7 @@ func TestOpenCodeACPClientInternalHelpers(t *testing.T) {
 	})
 
 	t.Run("normalize ACP stdio agent command trims and validates arguments", func(t *testing.T) {
-		normalized, err := normalizeACPStdioAgentCommand(agentprofiles.ACPStdioAgentCommand{
+		normalized, err := normalizeACPAgentCommand(agentprofiles.ACPStdioAgentCommand{
 			Command: "  opencode  ",
 			Args:    nil,
 		})
@@ -366,13 +366,13 @@ func TestOpenCodeACPClientInternalHelpers(t *testing.T) {
 		assert.Equal(t, "opencode", normalized.Command)
 		assert.Equal(t, []string{}, normalized.Args)
 
-		_, err = normalizeACPStdioAgentCommand(agentprofiles.ACPStdioAgentCommand{
+		_, err = normalizeACPAgentCommand(agentprofiles.ACPStdioAgentCommand{
 			Command: "opencode",
 			Args:    []string{"dup", "dup"},
 		})
 		require.ErrorContains(t, err, "must be unique")
 
-		_, err = normalizeACPStdioAgentCommand(agentprofiles.ACPStdioAgentCommand{
+		_, err = normalizeACPAgentCommand(agentprofiles.ACPStdioAgentCommand{
 			Command: "opencode",
 			Args:    []string{"bad\targ"},
 		})

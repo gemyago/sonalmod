@@ -61,6 +61,8 @@ To run all affected lint and tests, use `make affected-lint-test`
 
 Any weird issues from golangci-linter (like invalid suppression directives or similar) maybe caused by caching issues. Try to clean the cache with `make clean-lint-cache` from repo root (this will only remove the cache) and run the linter again.
 
+> ⚠️ If golangci-lint reports findings that seem unrelated to your changes (e.g. stale suppression directives in untouched files), clean the cache first: `make clean-lint-cache`, then re-run
+
 ## npm Release Build Pipeline
 
 All release build logic lives in `build/npm/`. The pipeline is local-first: every step runs identically on developer machines and in CI.
@@ -91,7 +93,6 @@ AI must always follow the rules and conventions defined in this section. This se
 The rules are:
 - Update project rules and conventions when user corrects the behavior of AI.
 - Each rule must aim to be a simple and clear one line (50-80 characters)
-- If linter returns results that feel irrelevant, before jumping on a fix: clean golangci-lint cache (`make clean-lint-cache`) and re-run linter.
 
 Gopher skill must be used prior to **writing** any Go code, or **planning** go code changes.
 
@@ -109,8 +110,9 @@ Apply this when any code files were changed (Go, YAML, config files, etc.).
 Note: Documentation files (e.g., .md) are not considered code files and should follow the Non-Coding Protocol.
 
 **Always** perform these steps before reporting completion:
-1. Run `make affected-lint-test` and confirm no errors
-3. Verify AGENTS.md is updated if commands, workflows, or architecture changed
+1. Run `make affected-lint-test`
+   - If findings appear unrelated to your changes, run `make clean-lint-cache` and re-run before fixing
+2. Verify AGENTS.md is updated if commands, workflows, or architecture changed
 
 Report task completion status:
 - Lint/test: ✓ no errors

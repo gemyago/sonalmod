@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
-	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -36,8 +35,8 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 		finalText := fake.Lorem().Sentence(4)
 		sessionID := fake.UUID().V4()
 
-		result := NewRunResult(sessionID, &codinglane.ACPStdioExecutorResult{
-			Updates: []codinglane.ACPStdioUpdate{
+		result := NewRunResult(sessionID, &ExecutorResult{
+			Updates: []Update{
 				{
 					Type:    "progress",
 					Payload: json.RawMessage(`{"content":[{"text":"` + progressText + `"}]}`),
@@ -68,7 +67,7 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 	t.Run("prompt result fallback preserves JSON when no text field exists", func(t *testing.T) {
 		t.Parallel()
 
-		result := NewRunResult(fake.UUID().V4(), &codinglane.ACPStdioExecutorResult{
+		result := NewRunResult(fake.UUID().V4(), &ExecutorResult{
 			PromptResult: json.RawMessage("{\n  \"ok\": true,\n  \"count\": 2\n}"),
 		})
 
@@ -82,7 +81,7 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 	t.Run("error update and executor failures map to stream errors", func(t *testing.T) {
 		t.Parallel()
 
-		updateEvent := mapACPStdioUpdateToSessionEvent(codinglane.ACPStdioUpdate{
+		updateEvent := mapACPStdioUpdateToSessionEvent(Update{
 			Type:    "error",
 			Payload: json.RawMessage(`{"text":"` + fake.Lorem().Sentence(3) + `"}`),
 		})
@@ -90,8 +89,8 @@ func TestACPStdioRunResultHelpers(t *testing.T) {
 		assert.Equal(t, "acp-stdio-error", updateEvent.ErrorCode)
 		assert.NotEmpty(t, updateEvent.ErrorMessage)
 
-		typedErr := &codinglane.ACPStdioError{
-			Kind: codinglane.ACPStdioErrorKindProtocol,
+		typedErr := &LaunchError{
+			Kind: LaunchErrorKindProtocol,
 			Op:   fake.Lorem().Word(),
 			Err:  errors.New(fake.Lorem().Sentence(4)),
 		}

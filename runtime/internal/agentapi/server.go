@@ -258,11 +258,7 @@ func (s *AgentAPIServer) writeAgentRunError(
 		switch execErr.Kind {
 		case rt.AgentExecErrorKindValidation, rt.AgentExecErrorKindUnsupported:
 			s.logger.DebugContext(ctx, op+": agent exec", "err", err)
-			detail := "invalid profileName"
-			if execErr.Err != nil {
-				detail = execErr.Err.Error()
-			}
-			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", detail)
+			writeProblemDetails(w, http.StatusBadRequest, "Bad Request", "invalid profile selection")
 			return
 		case rt.AgentExecErrorKindNotFound:
 			s.logger.DebugContext(ctx, op+": agent exec", "err", err)

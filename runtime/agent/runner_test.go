@@ -10,7 +10,6 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal"
 	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
-	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
@@ -798,8 +797,8 @@ func TestRunner(t *testing.T) {
 			}
 
 			execSpy := &stubACPExecutor{
-				result: &codinglane.ACPStdioExecutorResult{
-					Updates: []codinglane.ACPStdioUpdate{
+				result: &acpstdio.ExecutorResult{
+					Updates: []acpstdio.Update{
 						{Type: "final", Payload: []byte(`"ok"`)},
 					},
 				},
@@ -899,14 +898,14 @@ func (s *stubProfilesService) AutoMigrate() error {
 }
 
 type stubACPExecutor struct {
-	result *codinglane.ACPStdioExecutorResult
+	result *acpstdio.ExecutorResult
 	err    error
 }
 
 func (s *stubACPExecutor) Execute(
 	context.Context,
-	codinglane.ACPStdioExecutorRequest,
-) (*codinglane.ACPStdioExecutorResult, error) {
+	acpstdio.ExecutorRequest,
+) (*acpstdio.ExecutorResult, error) {
 	return s.result, s.err
 }
 

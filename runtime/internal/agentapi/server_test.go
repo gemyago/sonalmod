@@ -1022,7 +1022,8 @@ func TestAgentAPIServer(t *testing.T) {
 			var pd ProblemDetails
 			require.NoError(t, json.NewDecoder(rec.Body).Decode(&pd))
 			require.NotNil(t, pd.Detail)
-			assert.Contains(t, *pd.Detail, "unsupported profile")
+			assert.Equal(t, "invalid profile selection", *pd.Detail)
+			assert.NotContains(t, *pd.Detail, "unsupported profile")
 		})
 	})
 

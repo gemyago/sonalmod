@@ -1,4 +1,4 @@
-package codinglane
+package acpstdio
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMapACPStdioExecutorRequest(t *testing.T) {
+func TestMapExecutorRequest(t *testing.T) {
 	profile := agentprofiles.AgentProfile{
 		Name:         "profile-main",
 		DisplayName:  "Main",
@@ -26,7 +26,7 @@ func TestMapACPStdioExecutorRequest(t *testing.T) {
 	}
 
 	t.Run("maps prompt with profile-owned ACP stdio settings", func(t *testing.T) {
-		request, err := MapACPStdioExecutorRequest(profile, "fix flaky test")
+		request, err := MapExecutorRequest(profile, "fix flaky test")
 		require.NoError(t, err)
 		assert.Equal(t, profile.ExecutionSettings, request.ExecutionSettings)
 		assert.Contains(t, request.Prompt, profile.Instructions)
@@ -36,7 +36,7 @@ func TestMapACPStdioExecutorRequest(t *testing.T) {
 	})
 
 	t.Run("returns validation error for missing prompt", func(t *testing.T) {
-		_, err := MapACPStdioExecutorRequest(profile, " ")
+		_, err := MapExecutorRequest(profile, " ")
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "prompt is required")
 	})
@@ -44,7 +44,7 @@ func TestMapACPStdioExecutorRequest(t *testing.T) {
 	t.Run("returns validation error for missing profile name", func(t *testing.T) {
 		invalidProfile := profile
 		invalidProfile.Name = ""
-		_, err := MapACPStdioExecutorRequest(invalidProfile, "run")
+		_, err := MapExecutorRequest(invalidProfile, "run")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "profile name is required")
 	})
@@ -55,7 +55,7 @@ func TestMapACPStdioExecutorRequest(t *testing.T) {
 			DefaultModel: "openai/gpt-5",
 		}
 
-		_, err := MapACPStdioExecutorRequest(regularProfile, "run")
+		_, err := MapExecutorRequest(regularProfile, "run")
 		require.Error(t, err)
 		require.ErrorContains(t, err, "does not use acp-stdio")
 	})

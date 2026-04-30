@@ -1,4 +1,4 @@
-package codinglane
+package acpstdio
 
 import (
 	"errors"
@@ -8,21 +8,21 @@ import (
 	"github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 )
 
-// MapACPStdioExecutorRequest composes ACP stdio executor input from profile defaults.
-func MapACPStdioExecutorRequest(
+// MapExecutorRequest composes ACP stdio executor input from profile defaults.
+func MapExecutorRequest(
 	profile agentprofiles.AgentProfile,
 	prompt string,
-) (ACPStdioExecutorRequest, error) {
+) (ExecutorRequest, error) {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
-		return ACPStdioExecutorRequest{}, errors.New("prompt is required")
+		return ExecutorRequest{}, errors.New("prompt is required")
 	}
 
 	if profile.Name == "" {
-		return ACPStdioExecutorRequest{}, errors.New("profile name is required")
+		return ExecutorRequest{}, errors.New("profile name is required")
 	}
 	if profile.ExecutionSettings.ModeOrDefault() != agentprofiles.ExecutionModeACPStdio {
-		return ACPStdioExecutorRequest{}, fmt.Errorf(
+		return ExecutorRequest{}, fmt.Errorf(
 			"profile %s does not use acp-stdio execution settings",
 			profile.Name,
 		)
@@ -42,7 +42,7 @@ func MapACPStdioExecutorRequest(
 		prompt,
 	)
 
-	return ACPStdioExecutorRequest{
+	return ExecutorRequest{
 		ExecutionSettings: profile.ExecutionSettings,
 		Prompt:            composedPrompt,
 		MCPServers:        []any{},

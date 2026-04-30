@@ -8,7 +8,6 @@ import (
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
-	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
 	"github.com/jaswdr/faker/v2"
 	"github.com/stretchr/testify/assert"
@@ -16,13 +15,13 @@ import (
 )
 
 type profileRunnerExecutorStub struct {
-	execute func(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
+	execute func(ctx context.Context, request ExecutorRequest) (*ExecutorResult, error)
 }
 
 func (s *profileRunnerExecutorStub) Execute(
 	ctx context.Context,
-	request codinglane.ACPStdioExecutorRequest,
-) (*codinglane.ACPStdioExecutorResult, error) {
+	request ExecutorRequest,
+) (*ExecutorResult, error) {
 	return s.execute(ctx, request)
 }
 
@@ -112,13 +111,13 @@ func TestACPProfileRunner(t *testing.T) {
 
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
 			Executor: &profileRunnerExecutorStub{
-				execute: func(_ context.Context, req codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+				execute: func(_ context.Context, req ExecutorRequest) (*ExecutorResult, error) {
 					assert.Equal(t, profile.ExecutionSettings, req.ExecutionSettings)
 					assert.Contains(t, req.Prompt, messageText)
 
-					return &codinglane.ACPStdioExecutorResult{
+					return &ExecutorResult{
 						SessionID: fake.UUID().V4(),
-						Updates: []codinglane.ACPStdioUpdate{
+						Updates: []Update{
 							{
 								Type: "progress",
 								Payload: json.RawMessage(
@@ -169,7 +168,7 @@ func TestACPProfileRunner(t *testing.T) {
 
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
 			Executor: &profileRunnerExecutorStub{
-				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+				execute: func(context.Context, ExecutorRequest) (*ExecutorResult, error) {
 					return nil, expectedErr
 				},
 			},
@@ -209,7 +208,7 @@ func TestACPProfileRunner(t *testing.T) {
 
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
 			Executor: &profileRunnerExecutorStub{
-				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+				execute: func(context.Context, ExecutorRequest) (*ExecutorResult, error) {
 					return nil, errors.New(fake.Lorem().Sentence(4))
 				},
 			},
@@ -248,9 +247,9 @@ func TestACPProfileRunner(t *testing.T) {
 
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
 			Executor: &profileRunnerExecutorStub{
-				execute: func(_ context.Context, _ codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
-					return &codinglane.ACPStdioExecutorResult{
-						Updates: []codinglane.ACPStdioUpdate{{
+				execute: func(_ context.Context, _ ExecutorRequest) (*ExecutorResult, error) {
+					return &ExecutorResult{
+						Updates: []Update{{
 							Type: "final",
 							Payload: json.RawMessage(
 								`{"message":"` + fake.Lorem().Sentence(3) + `"}`,
@@ -291,7 +290,7 @@ func TestACPProfileRunner(t *testing.T) {
 
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
 			Executor: &profileRunnerExecutorStub{
-				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+				execute: func(context.Context, ExecutorRequest) (*ExecutorResult, error) {
 					panic("Execute should not be called")
 				},
 			},
@@ -314,7 +313,7 @@ func TestACPProfileRunner(t *testing.T) {
 		requestProfileName := fake.Lorem().Word()
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
 			Executor: &profileRunnerExecutorStub{
-				execute: func(context.Context, codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error) {
+				execute: func(context.Context, ExecutorRequest) (*ExecutorResult, error) {
 					panic("Execute should not be called")
 				},
 			},

@@ -9,20 +9,19 @@ import (
 	"strings"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
-	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 )
 
 // NewRunResult converts ACP stdio executor output into a runtime run result.
 func NewRunResult(
 	sessionID string,
-	result *codinglane.ACPStdioExecutorResult,
+	result *ExecutorResult,
 ) *rt.RunResult {
 	events := buildACPStdioSessionEvents(result)
 	return rt.NewRunResult(sessionEventSeq(events), sessionID)
 }
 
 // BuildSessionEvents maps ACP stdio executor output into session events.
-func BuildSessionEvents(result *codinglane.ACPStdioExecutorResult) []*rt.SessionEvent {
+func BuildSessionEvents(result *ExecutorResult) []*rt.SessionEvent {
 	return buildACPStdioSessionEvents(result)
 }
 
@@ -46,7 +45,7 @@ func sessionEventSeq(events []*rt.SessionEvent) iter.Seq2[*rt.SessionEvent, erro
 	}
 }
 
-func buildACPStdioSessionEvents(result *codinglane.ACPStdioExecutorResult) []*rt.SessionEvent {
+func buildACPStdioSessionEvents(result *ExecutorResult) []*rt.SessionEvent {
 	if result == nil {
 		return []*rt.SessionEvent{acpStdioErrorSessionEvent(errors.New("ACP stdio executor returned no result"))}
 	}
@@ -69,7 +68,7 @@ func buildACPStdioSessionEvents(result *codinglane.ACPStdioExecutorResult) []*rt
 	return events
 }
 
-func mapACPStdioUpdateToSessionEvent(update codinglane.ACPStdioUpdate) *rt.SessionEvent {
+func mapACPStdioUpdateToSessionEvent(update Update) *rt.SessionEvent {
 	if strings.EqualFold(update.Type, "error") {
 		return &rt.SessionEvent{
 			ErrorCode:    "acp-stdio-error",
@@ -176,7 +175,7 @@ func acpStdioErrorSessionEvent(err error) *rt.SessionEvent {
 	message := "ACP stdio execution failed"
 	code := "acp-stdio-execution"
 
-	var acpErr *codinglane.ACPStdioError
+	var acpErr *LaunchError
 	if errors.As(err, &acpErr) {
 		code = "acp-stdio-" + string(acpErr.Kind)
 		message = acpStdioErrorMessage(acpErr)
@@ -190,18 +189,18 @@ func acpStdioErrorSessionEvent(err error) *rt.SessionEvent {
 	}
 }
 
-func acpStdioErrorMessage(err *codinglane.ACPStdioError) string {
+func acpStdioErrorMessage(err *LaunchError) string {
 	detail := ""
 	if err != nil && err.Err != nil {
 		detail = strings.TrimSpace(err.Err.Error())
 	}
 
 	switch err.Kind {
-	case codinglane.ACPStdioErrorKindValidation:
+	case LaunchErrorKindValidation:
 		return firstNonEmpty("ACP stdio request validation failed: "+detail, "ACP stdio request validation failed")
-	case codinglane.ACPStdioErrorKindSubprocess:
+	case LaunchErrorKindSubprocess:
 		return firstNonEmpty("ACP stdio agent failed to start: "+detail, "ACP stdio agent failed to start")
-	case codinglane.ACPStdioErrorKindProtocol:
+	case LaunchErrorKindProtocol:
 		return firstNonEmpty("ACP stdio protocol error: "+detail, "ACP stdio protocol error")
 	default:
 		return firstNonEmpty("ACP stdio execution failed: "+detail, "ACP stdio execution failed")

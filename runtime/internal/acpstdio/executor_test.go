@@ -1,4 +1,4 @@
-package codinglane
+package acpstdio
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestACPStdioExecutor(t *testing.T) {
+func TestStdioExecutor(t *testing.T) {
 	t.Parallel()
 
 	fake := faker.New()
 
-	makeRequest := func() ACPStdioExecutorRequest {
-		return ACPStdioExecutorRequest{
+	makeRequest := func() ExecutorRequest {
+		return ExecutorRequest{
 			ExecutionSettings: agentprofiles.ExecutionSettings{
 				Mode: agentprofiles.ExecutionModeACPStdio,
 				AgentCommand: agentprofiles.ACPStdioAgentCommand{
@@ -38,18 +38,18 @@ func TestACPStdioExecutor(t *testing.T) {
 		t.Parallel()
 
 		request := makeRequest()
-		expectedResult := &ACPStdioExecutorResult{
+		expectedResult := &ExecutorResult{
 			SessionID:    fake.UUID().V4(),
 			PromptResult: json.RawMessage(`{"ok":true}`),
 		}
 
 		type capturedRequest struct {
-			value ACPStdioLaunchRequest
+			value LaunchRequest
 		}
 		captured := &capturedRequest{}
 
-		executor := newACPStdioExecutorWithClient(&fakeACPLaunchClient{
-			launch: func(_ context.Context, req ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error) {
+		executor := newStdioExecutorWithClient(&fakeACPLaunchClient{
+			launch: func(_ context.Context, req LaunchRequest) (*LaunchResult, error) {
 				captured.value = req
 				return expectedResult, nil
 			},
@@ -68,14 +68,14 @@ func TestACPStdioExecutor(t *testing.T) {
 	t.Run("rejects non ACP stdio execution settings", func(t *testing.T) {
 		t.Parallel()
 
-		executor := newACPStdioExecutorWithClient(&fakeACPLaunchClient{
-			launch: func(context.Context, ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error) {
+		executor := newStdioExecutorWithClient(&fakeACPLaunchClient{
+			launch: func(context.Context, LaunchRequest) (*LaunchResult, error) {
 				t.Fatal("unexpected launch call")
 				return nil, errors.New("unexpected launch call")
 			},
 		})
 
-		_, err := executor.Execute(t.Context(), ACPStdioExecutorRequest{
+		_, err := executor.Execute(t.Context(), ExecutorRequest{
 			ExecutionSettings: agentprofiles.ExecutionSettings{
 				DefaultModel: "openai/gpt-5",
 			},
@@ -83,9 +83,9 @@ func TestACPStdioExecutor(t *testing.T) {
 		})
 		require.Error(t, err)
 
-		var execErr *ACPStdioError
+		var execErr *LaunchError
 		require.ErrorAs(t, err, &execErr)
-		assert.Equal(t, ACPStdioErrorKindValidation, execErr.Kind)
+		assert.Equal(t, LaunchErrorKindValidation, execErr.Kind)
 		assert.ErrorContains(t, err, "execution_settings.mode must be acp-stdio")
 	})
 
@@ -93,14 +93,14 @@ func TestACPStdioExecutor(t *testing.T) {
 		t.Parallel()
 
 		request := makeRequest()
-		expectedErr := &ACPStdioError{
-			Kind: ACPStdioErrorKindProtocol,
+		expectedErr := &LaunchError{
+			Kind: LaunchErrorKindProtocol,
 			Op:   "session/prompt",
 			Err:  errors.New("protocol failed"),
 		}
 
-		executor := newACPStdioExecutorWithClient(&fakeACPLaunchClient{
-			launch: func(context.Context, ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error) {
+		executor := newStdioExecutorWithClient(&fakeACPLaunchClient{
+			launch: func(context.Context, LaunchRequest) (*LaunchResult, error) {
 				return nil, expectedErr
 			},
 		})
@@ -112,12 +112,12 @@ func TestACPStdioExecutor(t *testing.T) {
 }
 
 type fakeACPLaunchClient struct {
-	launch func(context.Context, ACPStdioLaunchRequest) (*ACPStdioLaunchResult, error)
+	launch func(context.Context, LaunchRequest) (*LaunchResult, error)
 }
 
 func (f *fakeACPLaunchClient) Launch(
 	ctx context.Context,
-	request ACPStdioLaunchRequest,
-) (*ACPStdioLaunchResult, error) {
+	request LaunchRequest,
+) (*LaunchResult, error) {
 	return f.launch(ctx, request)
 }

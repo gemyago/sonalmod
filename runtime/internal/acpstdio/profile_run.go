@@ -7,12 +7,11 @@ import (
 	"strings"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
-	"github.com/gemyago/sonalmod/runtime/internal/codinglane"
 )
 
 // Executor runs ACP stdio requests derived from a resolved profile.
 type Executor interface {
-	Execute(ctx context.Context, request codinglane.ACPStdioExecutorRequest) (*codinglane.ACPStdioExecutorResult, error)
+	Execute(ctx context.Context, request ExecutorRequest) (*ExecutorResult, error)
 }
 
 // ACPProfileRunner executes ACP stdio profile runs and records their replayable session history.
@@ -42,7 +41,7 @@ func NewACPProfileRunner(params NewACPProfileRunnerParams) (*ACPProfileRunner, e
 	}
 
 	return NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
-		Executor: codinglane.NewACPStdioExecutor(),
+		Executor: NewStdioExecutor(),
 		Recorder: recorder,
 	})
 }
@@ -69,7 +68,7 @@ func (r *ACPProfileRunner) Run(ctx context.Context, request RunRequest) (*rt.Run
 		)
 	}
 
-	acpRequest, mapErr := codinglane.MapACPStdioExecutorRequest(
+	acpRequest, mapErr := MapExecutorRequest(
 		*request.Profile,
 		MessageContentText(request.Message),
 	)
