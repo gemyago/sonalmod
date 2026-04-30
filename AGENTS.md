@@ -91,9 +91,7 @@ AI must always follow the rules and conventions defined in this section. This se
 The rules are:
 - Update project rules and conventions when user corrects the behavior of AI.
 - Each rule must aim to be a simple and clear one line (50-80 characters)
-- Pin golangci-lint once at repo root via build/make.
-- Use per-module golangci-lint cache under repo `.cache/`.
-- Clean golangci-lint cache if ireturn results look irrelevant.
+- If linter returns results that feel irrelevant, before jumping on a fix: clean golangci-lint cache (`make clean-lint-cache`) and re-run linter.
 
 Gopher skill must be used prior to **writing** any Go code, or **planning** go code changes.
 
