@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/gemyago/sonalmod/runtime/internal"
-	"github.com/gemyago/sonalmod/runtime/internal/acpstdio"
 	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	lp "github.com/gemyago/sonalmod/runtime/internal/llmproviders"
 	"github.com/gemyago/sonalmod/runtime/internal/sessions"
@@ -741,71 +740,6 @@ func TestRunner(t *testing.T) {
 			assert.Same(t, locator, cast)
 		})
 	})
-
-	t.Run("acpProfileExecutorAdapter", func(t *testing.T) {
-		t.Run("returns execution error when runner is unavailable", func(t *testing.T) {
-			adapter := acpProfileExecutorAdapter{}
-			result, err := adapter.RunACPProfile(t.Context(), internal.ACPRunRequest{})
-			require.Error(t, err)
-			assert.Nil(t, result)
-			var runErr *internal.AgentExecError
-			require.ErrorAs(t, err, &runErr)
-			assert.Equal(t, internal.AgentExecErrorKindExecution, runErr.Kind)
-			assert.Equal(t, "run-acp-profile", runErr.Op)
-			assert.EqualError(t, runErr.Err, "ACP profile runner unavailable")
-		})
-
-		t.Run("forwards request fields to ACP profile runner", func(t *testing.T) {
-			profileName := "profile-" + fake.Lorem().Word()
-			userID := fake.UUID().V4()
-			sessionID := fake.UUID().V4()
-			modelName := fake.Lorem().Word() + "/" + fake.Lorem().Word()
-			msg := &internal.MessageContent{Parts: []internal.MessagePart{{Text: fake.Lorem().Sentence(3)}}}
-			profile := &ap.AgentProfile{
-				Name: profileName,
-				ExecutionSettings: ap.ExecutionSettings{
-					Mode:         ap.ExecutionModeACPStdio,
-					AgentCommand: ap.ACPStdioAgentCommand{Command: "opencode", Args: []string{"acp"}},
-				},
-			}
-
-			execSpy := &stubACPExecutor{
-				result: &acpstdio.ExecutorResult{
-					Updates: []acpstdio.Update{
-						{Type: "final", Payload: []byte(`"ok"`)},
-					},
-				},
-			}
-			recorder := &spySessionRecorder{}
-			acpRunner, err := acpstdio.NewACPProfileRunnerWithExecutor(
-				acpstdio.NewACPProfileRunnerWithExecutorParams{
-					Executor: execSpy,
-					Recorder: recorder,
-				},
-			)
-			require.NoError(t, err)
-
-			adapter := acpProfileExecutorAdapter{runner: acpRunner}
-			result, err := adapter.RunACPProfile(t.Context(), internal.ACPRunRequest{
-				ProfileName: profileName,
-				Profile:     profile,
-				Model:       modelName,
-				UserID:      userID,
-				SessionID:   sessionID,
-				Message:     msg,
-			})
-			require.NoError(t, err)
-			require.NotNil(t, result)
-			assert.Equal(t, sessionID, result.SessionID())
-			require.NotNil(t, recorder.lastRequest)
-			assert.Equal(t, profileName, recorder.lastRequest.ProfileName)
-			assert.Equal(t, profile, recorder.lastRequest.Profile)
-			assert.Equal(t, modelName, recorder.lastRequest.Model)
-			assert.Equal(t, userID, recorder.lastRequest.UserID)
-			assert.Equal(t, sessionID, recorder.lastRequest.SessionID)
-			assert.Equal(t, msg, recorder.lastRequest.Message)
-		})
-	})
 }
 
 func newSessionEvent(invocationID, text string) *session.Event {
@@ -868,30 +802,4 @@ func (s *stubProfilesService) Delete(context.Context, string) error {
 
 func (s *stubProfilesService) AutoMigrate() error {
 	panic("unexpected AutoMigrate call")
-}
-
-type stubACPExecutor struct {
-	result *acpstdio.ExecutorResult
-	err    error
-}
-
-func (s *stubACPExecutor) Execute(
-	context.Context,
-	acpstdio.ExecutorRequest,
-) (*acpstdio.ExecutorResult, error) {
-	return s.result, s.err
-}
-
-type spySessionRecorder struct {
-	lastRequest *acpstdio.RunRequest
-}
-
-func (s *spySessionRecorder) Record(
-	_ context.Context,
-	request acpstdio.RunRequest,
-	_ []*internal.SessionEvent,
-) error {
-	reqCopy := request
-	s.lastRequest = &reqCopy
-	return nil
 }

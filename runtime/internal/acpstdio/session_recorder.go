@@ -7,24 +7,13 @@ import (
 	"strings"
 
 	rt "github.com/gemyago/sonalmod/runtime/internal"
-	ap "github.com/gemyago/sonalmod/runtime/internal/agentprofiles"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
 
-// RunRequest identifies the ACP-backed profile run to execute.
-type RunRequest struct {
-	ProfileName string
-	Profile     *ap.AgentProfile
-	Model       string
-	UserID      string
-	SessionID   string
-	Message     *rt.MessageContent
-}
-
 // SessionRecorder persists ACP profile run history through the standard session storage path.
 type SessionRecorder interface {
-	Record(ctx context.Context, request RunRequest, events []*rt.SessionEvent) error
+	Record(ctx context.Context, request rt.ACPRunRequest, events []*rt.SessionEvent) error
 }
 
 type sessionService interface {
@@ -57,7 +46,7 @@ func NewSessionRecorder(appName string, storage sessionService) (SessionRecorder
 
 func (r *adkSessionRecorder) Record(
 	ctx context.Context,
-	request RunRequest,
+	request rt.ACPRunRequest,
 	events []*rt.SessionEvent,
 ) error {
 	if strings.TrimSpace(request.UserID) == "" {

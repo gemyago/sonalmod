@@ -58,8 +58,8 @@ func NewACPProfileRunnerWithExecutor(params NewACPProfileRunnerWithExecutorParam
 	}, nil
 }
 
-// Run executes the resolved ACP stdio profile and returns a standard runtime run result.
-func (r *ACPProfileRunner) Run(ctx context.Context, request RunRequest) (*rt.RunResult, error) {
+// RunACPProfile executes the resolved ACP stdio profile and returns a standard runtime run result.
+func (r *ACPProfileRunner) RunACPProfile(ctx context.Context, request rt.ACPRunRequest) (*rt.RunResult, error) {
 	if request.Profile == nil {
 		return nil, rt.WrapAgentExecError(
 			rt.AgentExecErrorKindValidation,
@@ -100,7 +100,7 @@ func (r *ACPProfileRunner) Run(ctx context.Context, request RunRequest) (*rt.Run
 
 func (r *ACPProfileRunner) recordEvents(
 	ctx context.Context,
-	request RunRequest,
+	request rt.ACPRunRequest,
 	events []*rt.SessionEvent,
 ) error {
 	if r.recorder == nil {
@@ -118,7 +118,7 @@ func (r *ACPProfileRunner) recordEvents(
 	return nil
 }
 
-func profileRunName(request RunRequest) string {
+func profileRunName(request rt.ACPRunRequest) string {
 	if request.Profile != nil {
 		name := strings.TrimSpace(request.Profile.Name)
 		if name != "" {

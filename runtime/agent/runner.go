@@ -204,7 +204,7 @@ func NewRunner(args RunnerArgs, opts ...RunnerOpt) (*Runner, error) {
 		ToolsRegistry:         toolsProvider,
 		ModelName:             "",
 		ProfilesService:       args.AgentProfilesService,
-		ACPProfileExecutor:    acpProfileExecutorAdapter{runner: acpProfileRun},
+		ACPProfileExecutor:    acpProfileRun,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("agent runner: %w", err)
@@ -247,32 +247,6 @@ func (r *Runner) Run(ctx context.Context, params RunParams) (*RunResult, error) 
 	}
 
 	return r.agentRunner.Run(ctx, params)
-}
-
-type acpProfileExecutorAdapter struct {
-	runner *acpstdio.ACPProfileRunner
-}
-
-func (a acpProfileExecutorAdapter) RunACPProfile(
-	ctx context.Context,
-	request internal.ACPRunRequest,
-) (*internal.RunResult, error) {
-	if a.runner == nil {
-		return nil, internal.WrapAgentExecError(
-			internal.AgentExecErrorKindExecution,
-			"run-acp-profile",
-			errors.New("ACP profile runner unavailable"),
-		)
-	}
-
-	return a.runner.Run(ctx, acpstdio.RunRequest{
-		ProfileName: request.ProfileName,
-		Profile:     request.Profile,
-		Model:       request.Model,
-		UserID:      request.UserID,
-		SessionID:   request.SessionID,
-		Message:     request.Message,
-	})
 }
 
 // ReadSession reads the events for a session from the configured session service.

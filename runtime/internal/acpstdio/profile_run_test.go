@@ -26,12 +26,12 @@ func (s *profileRunnerExecutorStub) Execute(
 }
 
 type profileRunnerRecorderStub struct {
-	record func(ctx context.Context, request RunRequest, events []*rt.SessionEvent) error
+	record func(ctx context.Context, request rt.ACPRunRequest, events []*rt.SessionEvent) error
 }
 
 func (r *profileRunnerRecorderStub) Record(
 	ctx context.Context,
-	request RunRequest,
+	request rt.ACPRunRequest,
 	events []*rt.SessionEvent,
 ) error {
 	return r.record(ctx, request, events)
@@ -95,7 +95,7 @@ func TestACPProfileRunner(t *testing.T) {
 
 		profile := newProfile()
 		messageText := fake.Lorem().Sentence(4)
-		request := RunRequest{
+		request := rt.ACPRunRequest{
 			ProfileName: profile.Name,
 			Profile:     profile,
 			Model:       fake.Lorem().Word(),
@@ -106,7 +106,7 @@ func TestACPProfileRunner(t *testing.T) {
 			},
 		}
 
-		var recordedRequest RunRequest
+		var recordedRequest rt.ACPRunRequest
 		var recordedEvents []*rt.SessionEvent
 
 		runner, err := NewACPProfileRunnerWithExecutor(NewACPProfileRunnerWithExecutorParams{
@@ -135,7 +135,7 @@ func TestACPProfileRunner(t *testing.T) {
 				},
 			},
 			Recorder: &profileRunnerRecorderStub{
-				record: func(_ context.Context, req RunRequest, events []*rt.SessionEvent) error {
+				record: func(_ context.Context, req rt.ACPRunRequest, events []*rt.SessionEvent) error {
 					recordedRequest = req
 					recordedEvents = append(recordedEvents, events...)
 					return nil
@@ -144,7 +144,7 @@ func TestACPProfileRunner(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, runErr := runner.Run(t.Context(), request)
+		result, runErr := runner.RunACPProfile(t.Context(), request)
 
 		require.NoError(t, runErr)
 		require.NotNil(t, result)
@@ -173,14 +173,14 @@ func TestACPProfileRunner(t *testing.T) {
 				},
 			},
 			Recorder: &profileRunnerRecorderStub{
-				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
+				record: func(context.Context, rt.ACPRunRequest, []*rt.SessionEvent) error {
 					return nil
 				},
 			},
 		})
 		require.NoError(t, err)
 
-		result, runErr := runner.Run(t.Context(), RunRequest{
+		result, runErr := runner.RunACPProfile(t.Context(), rt.ACPRunRequest{
 			ProfileName: profile.Name,
 			Profile:     profile,
 			UserID:      fake.Internet().User(),
@@ -213,14 +213,14 @@ func TestACPProfileRunner(t *testing.T) {
 				},
 			},
 			Recorder: &profileRunnerRecorderStub{
-				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
+				record: func(context.Context, rt.ACPRunRequest, []*rt.SessionEvent) error {
 					return expectedErr
 				},
 			},
 		})
 		require.NoError(t, err)
 
-		result, runErr := runner.Run(t.Context(), RunRequest{
+		result, runErr := runner.RunACPProfile(t.Context(), rt.ACPRunRequest{
 			ProfileName: profile.Name,
 			Profile:     profile,
 			UserID:      fake.Internet().User(),
@@ -259,14 +259,14 @@ func TestACPProfileRunner(t *testing.T) {
 				},
 			},
 			Recorder: &profileRunnerRecorderStub{
-				record: func(context.Context, RunRequest, []*rt.SessionEvent) error {
+				record: func(context.Context, rt.ACPRunRequest, []*rt.SessionEvent) error {
 					return expectedErr
 				},
 			},
 		})
 		require.NoError(t, err)
 
-		result, runErr := runner.Run(t.Context(), RunRequest{
+		result, runErr := runner.RunACPProfile(t.Context(), rt.ACPRunRequest{
 			ProfileName: profile.Name,
 			Profile:     profile,
 			UserID:      fake.Internet().User(),
@@ -297,7 +297,7 @@ func TestACPProfileRunner(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, runErr := runner.Run(t.Context(), RunRequest{})
+		result, runErr := runner.RunACPProfile(t.Context(), rt.ACPRunRequest{})
 
 		require.Error(t, runErr)
 		assert.Nil(t, result)
@@ -320,7 +320,7 @@ func TestACPProfileRunner(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		result, runErr := runner.Run(t.Context(), RunRequest{
+		result, runErr := runner.RunACPProfile(t.Context(), rt.ACPRunRequest{
 			ProfileName: requestProfileName,
 			Profile: &ap.AgentProfile{
 				ExecutionSettings: ap.ExecutionSettings{

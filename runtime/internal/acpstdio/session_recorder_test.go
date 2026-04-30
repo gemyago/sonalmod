@@ -72,8 +72,8 @@ func TestADKSessionRecorderRecord(t *testing.T) {
 
 	fake := faker.New()
 
-	makeRequest := func() RunRequest {
-		return RunRequest{
+	makeRequest := func() rt.ACPRunRequest {
+		return rt.ACPRunRequest{
 			UserID:    fake.Internet().User(),
 			SessionID: fake.UUID().V4(),
 			Message: &rt.MessageContent{
@@ -98,11 +98,11 @@ func TestADKSessionRecorderRecord(t *testing.T) {
 		recorder, err := NewSessionRecorder(fake.Lorem().Word(), sessions.NewMemorySessionsStorage())
 		require.NoError(t, err)
 
-		err = recorder.Record(t.Context(), RunRequest{SessionID: fake.UUID().V4()}, nil)
+		err = recorder.Record(t.Context(), rt.ACPRunRequest{SessionID: fake.UUID().V4()}, nil)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "userID is required")
 
-		err = recorder.Record(t.Context(), RunRequest{UserID: fake.Internet().User()}, nil)
+		err = recorder.Record(t.Context(), rt.ACPRunRequest{UserID: fake.Internet().User()}, nil)
 		require.Error(t, err)
 		require.ErrorContains(t, err, "sessionID is required")
 	})
