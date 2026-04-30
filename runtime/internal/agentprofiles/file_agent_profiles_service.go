@@ -179,6 +179,8 @@ func (s *FileAgentProfilesService) Update(
 		return nil, err
 	}
 
+	originalCreatedAt := existing.CreatedAt
+
 	updated, err := applyProfileUpdate(existing, params)
 	if err != nil {
 		return nil, err
@@ -186,11 +188,11 @@ func (s *FileAgentProfilesService) Update(
 	if err = s.writeProfileFile(path, updated); err != nil {
 		return nil, err
 	}
-	createdAt, updatedAt, err := profileTimestampsFromPath(path)
+	_, updatedAt, err := profileTimestampsFromPath(path)
 	if err != nil {
 		return nil, err
 	}
-	updated.CreatedAt = createdAt
+	updated.CreatedAt = originalCreatedAt
 	updated.UpdatedAt = updatedAt
 	return &updated, nil
 }
